@@ -1,0 +1,5 @@
+# Runtime dependencies. Compile with: pip-compile requirements.in
+django~=5.2.0
+psycopg[binary]
+gunicorn
+whitenoise
