@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+  {% if expired %}
+    <h1>This link has expired</h1>
+    <p>Confirmation links are valid for 24 hours.</p>
+  {% else %}
+    <h1>This link is not valid</h1>
+    <p>Please use the most recent link from your email.</p>
+  {% endif %}
+  <p><a href="{% url 'resend_verification' %}">Send me a new link</a></p>
+{% endblock %}
