@@ -19,7 +19,7 @@ jobs:
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/bizpartnercheck
-      DJANGO_SECRET_KEY: ci-only-not-secret
+      DJANGO_SECRET_KEY: ci-only-not-a-secret-just-long-enough-for-django-deploy-checks-0123456789
       DJANGO_ALLOWED_HOSTS: localhost
     steps:
       - uses: actions/checkout@v5
