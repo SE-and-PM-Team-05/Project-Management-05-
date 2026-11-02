@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Edit Team Member</h1>
+
+<p>Editing: {{ member.email }}</p>
+
+<form method="post">
+    {% csrf_token %}
+
+    {{ form.as_p }}
+
+    <button type="submit">Save Changes</button>
+</form>
+
+<a href="{% url 'team_members' %}">Back to Team Members</a>
+{% endblock %}

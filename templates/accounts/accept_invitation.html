@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Accept Your Invitation</h1>
+
+<p>Create your account to join the organization.</p>
+
+<form method="post">
+    {% csrf_token %}
+
+    {{ form.as_p }}
+
+    <button type="submit">Create Account</button>
+</form>
+{% endblock %}
