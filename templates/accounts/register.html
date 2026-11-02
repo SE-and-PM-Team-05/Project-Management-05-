@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Register – BizPartnerCheck{% endblock %}
+{% block content %}
+  <h1>Register your organization</h1>
+  <p>Registration is free. You become the Org Admin and can invite your team afterwards.</p>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    {% for field in form %}
+      {% if field.name == "accept_terms" %}
+        <label>{{ field }} {{ field.label }} (<a href="{% url 'terms' %}" target="_blank">read the terms</a>)</label>
+      {% else %}
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.help_text %}<div class="helptext">{{ field.help_text }}</div>{% endif %}
+      {% endif %}
+      {{ field.errors }}
+    {% endfor %}
+    <button type="submit">Register</button>
+  </form>
+{% endblock %}

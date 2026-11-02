@@ -1,0 +1,6 @@
+# Development and CI tools. Compile with: pip-compile requirements-dev.in
+-c requirements.txt
+pip-tools
+pytest
+pytest-django
+ruff

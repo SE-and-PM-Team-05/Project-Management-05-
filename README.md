@@ -10,7 +10,76 @@ BizPartnerCheck is a multi-tenant web service that automates the due-diligence c
 
 ## Status
 
-The repository is being set up. The Django project, CI and deployment arrive with **SCRUM-17**; the host and database provider are chosen in **SCRUM-42**. Setup and run instructions will be added here by SCRUM-17.
+The Django skeleton and CI are in place (**SCRUM-17**). Deployment is added once **SCRUM-42** chooses the host and database provider; until then the `deploy` job in CI is a placeholder.
+
+## Run it locally
+
+You need Python 3.14, PostgreSQL and git. On Ubuntu:
+
+```bash
+sudo apt install git python3-venv python3-pip postgresql
+sudo -u postgres createuser --createdb "$USER"
+createdb bizpartnercheck
+```
+
+One-time setup in the repository folder:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+cp .env.example .env
+python manage.py migrate
+python manage.py create_superadmin you@example.com
+```
+
+`create_superadmin` prints a one-time password. Log in at http://localhost:8000/admin/ and choose a new one. The command refuses to run if a Super Admin already exists.
+
+After that, one command starts the app:
+
+```bash
+python manage.py runserver
+```
+
+Before you push, run the same checks as CI:
+
+```bash
+ruff check . && ruff format --check . && pytest
+```
+
+Emails (verification links, password resets) are printed in the `runserver` terminal unless `EMAIL_HOST` is set.
+
+### Environment variables
+
+`settings.py` reads a local `.env` file if it exists; real environment variables take precedence. On the host, set them in its secret settings.
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `DJANGO_DEBUG` | no | `false` | `true` only on your own machine. Off means HTTPS only, HSTS and secure cookies. |
+| `DJANGO_SECRET_KEY` | when debug is off | dev key | Long random string; different per environment. |
+| `DJANGO_ALLOWED_HOSTS` | when debug is off | – | Comma-separated domain names, e.g. `bizpartnercheck.example.com`. |
+| `DATABASE_URL` | no | `postgres:///bizpartnercheck` | `postgres://user:password@host:port/name`. |
+| `EMAIL_HOST` | no | – | SMTP server; if empty, emails go to the console. |
+| `EMAIL_PORT` | no | `587` | SMTP port (STARTTLS). |
+| `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` | with `EMAIL_HOST` | – | SMTP login. |
+| `DEFAULT_FROM_EMAIL` | no | `BizPartnerCheck <noreply@localhost>` | Sender of outgoing emails. |
+| `DJANGO_LOG_LEVEL` | no | `INFO` | Log level. |
+
+### Dependencies
+
+Direct dependencies are listed in `requirements.in` (app) and `requirements-dev.in` (tools); `requirements.txt` and `requirements-dev.txt` are the pinned lock files. To add or upgrade a library (agree on it in the team first):
+
+```bash
+pip-compile --strip-extras requirements.in
+pip-compile --strip-extras requirements-dev.in
+pip install -r requirements.txt -r requirements-dev.txt
+```
+
+### CI
+
+Every push to `main` and every pull request runs `.github/workflows/ci.yml` against PostgreSQL 18: ruff, formatting, missing migrations, Django's deployment checks and pytest. Only a green build on `main` reaches the `deploy` job.
+
+Reviews before merging are enforced by a branch protection rule on `main` (Settings → Branches): require a pull request with 1 approval and the `test` status check.
 
 ## Tech stack
 

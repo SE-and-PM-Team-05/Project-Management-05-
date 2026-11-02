@@ -1,0 +1,9 @@
+Hello {{ user.first_name }},
+
+please confirm the registration of {{ user.organization.name }} at BizPartnerCheck by opening this link:
+
+{{ link }}
+
+The link is valid for 24 hours. If you did not register, you can ignore this email.
+
+BizPartnerCheck

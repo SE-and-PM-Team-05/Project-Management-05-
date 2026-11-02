@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>Check your inbox</h1>
+  <p>We sent you an email with a confirmation link. Open it within 24 hours to activate your organization.</p>
+  <p>No email? <a href="{% url 'resend_verification' %}">Send the link again</a>.</p>
+{% endblock %}
