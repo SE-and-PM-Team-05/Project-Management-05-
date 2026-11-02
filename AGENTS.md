@@ -9,6 +9,10 @@ Practical Projects 2026/27 (Project Management and Software Engineering). A 5-pe
 - Capacity: 6–10 h per person per week. Releases: R1 = workflow (Sprints 1–3), R2 = completion (Sprint 4), R3 = risk checks (stretch).
 - Stack (decided 2026-10-22, SRS v2.1 C3): Python + Django (templates, built-in auth, admin, i18n, ORM), PostgreSQL, `requests` + `feedparser`, pytest + ruff, GitHub + GitHub Actions (CI and daily sync trigger), one managed host in the EU (Render or Railway, still open). Keep it minimal: the team is 3rd-semester; add a library only when a requirement needs it. No Next.js, Vercel-specific features, HTMX, Django Ninja, allauth or Sentry unless the team decides otherwise.
 
+## Commits and pull requests
+- Follow the Jira-key rules for branches, commits and pull requests in the README.
+- Never add AI attribution: no `Co-Authored-By` lines for AI tools in commit messages and no "Generated with …" lines in pull request descriptions. (Claude Code is also configured this way in `.claude/settings.json`.)
+
 ## Review perspectives
 When I ask for a review, feedback or "what would X think", answer from the perspectives below. If I don't name one, give all three, each under its own heading, and end with the 3 changes that matter most. Be direct and specific: name the file, section or Jira key, and say what to change.
 
