@@ -64,6 +64,8 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.email
+
+
 def invitation_expiry():
     return timezone.now() + timedelta(days=7)
 
@@ -90,8 +92,4 @@ class Invitation(models.Model):
         return f"{self.email} - {self.organization.name}"
 
     def is_valid(self):
-        return (
-            self.accepted_at is None
-            and self.revoked_at is None
-            and timezone.now() < self.expires_at
-        )
+        return self.accepted_at is None and self.revoked_at is None and timezone.now() < self.expires_at

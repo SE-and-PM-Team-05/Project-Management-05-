@@ -65,14 +65,13 @@ def resend_verification(request):
         return render(request, "accounts/resend_done.html")
     return render(request, "accounts/resend.html", {"form": form})
 
+
 @login_required
 def team_members(request):
     if not request.user.is_org_admin:
         return HttpResponseForbidden("Only Organization Admins can manage team members.")
 
-    members = User.objects.filter(
-        organization=request.user.organization
-    ).order_by("first_name", "last_name")
+    members = User.objects.filter(organization=request.user.organization).order_by("first_name", "last_name")
 
     return render(
         request,
@@ -85,9 +84,7 @@ def team_members(request):
 @transaction.atomic
 def invite_member(request):
     if not request.user.is_org_admin or request.user.organization is None:
-        return HttpResponseForbidden(
-            "Only Organization Admins can invite team members."
-        )
+        return HttpResponseForbidden("Only Organization Admins can invite team members.")
 
     form = InvitationForm(request.POST or None)
 
@@ -95,10 +92,7 @@ def invite_member(request):
         email = form.cleaned_data["email"].strip()
 
         if User.objects.filter(email__iexact=email).exists():
-            form.add_error(
-                "email",
-                "A user with this email address already exists."
-            )
+            form.add_error("email", "A user with this email address already exists.")
 
         elif Invitation.objects.filter(
             organization=request.user.organization,
@@ -107,10 +101,7 @@ def invite_member(request):
             revoked_at__isnull=True,
             expires_at__gt=timezone.now(),
         ).exists():
-            form.add_error(
-                "email",
-                "A pending invitation already exists for this email address."
-            )
+            form.add_error("email", "A pending invitation already exists for this email address.")
 
         else:
             token = secrets.token_urlsafe(32)
@@ -125,9 +116,7 @@ def invite_member(request):
                 is_review_user=form.cleaned_data["is_review_user"],
             )
 
-            invitation_url = request.build_absolute_uri(
-                reverse("accept_invitation", args=[token])
-            )
+            invitation_url = request.build_absolute_uri(reverse("accept_invitation", args=[token]))
 
             send_mail(
                 subject="Invitation to BizPartnerCheck",
@@ -156,10 +145,7 @@ def accept_invitation(request, token):
 
     with transaction.atomic():
         invitation = (
-            Invitation.objects.select_for_update()
-            .select_related("organization")
-            .filter(token_hash=token_hash)
-            .first()
+            Invitation.objects.select_for_update().select_related("organization").filter(token_hash=token_hash).first()
         )
 
         if invitation is None or not invitation.is_valid():
@@ -206,6 +192,7 @@ def accept_invitation(request, token):
         {"form": form},
     )
 
+
 @login_required
 @transaction.atomic
 def edit_member(request, member_id):
@@ -237,21 +224,19 @@ def edit_member(request, member_id):
         ]
 
         for role_field, role_name in protected_roles:
-            if (
-                member.is_active
-                and getattr(member, role_field)
-                and not data[role_field]
-            ):
-                remaining = User.objects.filter(
-                    organization=request.user.organization,
-                    is_active=True,
-                    **{role_field: True},
-                ).exclude(pk=member.pk).count()
+            if member.is_active and getattr(member, role_field) and not data[role_field]:
+                remaining = (
+                    User.objects.filter(
+                        organization=request.user.organization,
+                        is_active=True,
+                        **{role_field: True},
+                    )
+                    .exclude(pk=member.pk)
+                    .count()
+                )
 
                 if remaining == 0:
-                    return HttpResponseForbidden(
-                        f"You cannot remove the last active {role_name}."
-                    )
+                    return HttpResponseForbidden(f"You cannot remove the last active {role_name}.")
 
         member.first_name = data["first_name"]
         member.last_name = data["last_name"]
@@ -269,13 +254,12 @@ def edit_member(request, member_id):
         {"form": form, "member": member},
     )
 
+
 @login_required
 @transaction.atomic
 def deactivate_member(request, member_id):
     if not request.user.is_org_admin or request.user.organization is None:
-        return HttpResponseForbidden(
-            "Only Organization Admins can deactivate team members."
-        )
+        return HttpResponseForbidden("Only Organization Admins can deactivate team members.")
 
     if request.method != "POST":
         return HttpResponseForbidden("Deactivation requires a POST request.")
@@ -294,29 +278,30 @@ def deactivate_member(request, member_id):
 
         for role_field, role_name in protected_roles:
             if getattr(member, role_field):
-                remaining = User.objects.filter(
-                    organization=request.user.organization,
-                    is_active=True,
-                    **{role_field: True},
-                ).exclude(pk=member.pk).count()
+                remaining = (
+                    User.objects.filter(
+                        organization=request.user.organization,
+                        is_active=True,
+                        **{role_field: True},
+                    )
+                    .exclude(pk=member.pk)
+                    .count()
+                )
 
                 if remaining == 0:
-                    return HttpResponseForbidden(
-                        f"You cannot deactivate the last active {role_name}."
-                    )
+                    return HttpResponseForbidden(f"You cannot deactivate the last active {role_name}.")
 
         member.is_active = False
         member.save(update_fields=["is_active"])
 
     return redirect("team_members")
 
+
 @login_required
 @transaction.atomic
 def reactivate_member(request, member_id):
     if not request.user.is_org_admin or request.user.organization is None:
-        return HttpResponseForbidden(
-            "Only Organization Admins can reactivate team members."
-        )
+        return HttpResponseForbidden("Only Organization Admins can reactivate team members.")
 
     if request.method != "POST":
         return HttpResponseForbidden("Reactivation requires a POST request.")
@@ -332,13 +317,12 @@ def reactivate_member(request, member_id):
 
     return redirect("team_members")
 
+
 @login_required
 @transaction.atomic
 def delete_member(request, member_id):
     if not request.user.is_org_admin or request.user.organization is None:
-        return HttpResponseForbidden(
-            "Only Organization Admins can delete team members."
-        )
+        return HttpResponseForbidden("Only Organization Admins can delete team members.")
 
     if request.method != "POST":
         return HttpResponseForbidden("Deletion requires a POST request.")
@@ -357,16 +341,18 @@ def delete_member(request, member_id):
 
         for role_field, role_name in protected_roles:
             if getattr(member, role_field):
-                remaining = User.objects.filter(
-                    organization=request.user.organization,
-                    is_active=True,
-                    **{role_field: True},
-                ).exclude(pk=member.pk).count()
+                remaining = (
+                    User.objects.filter(
+                        organization=request.user.organization,
+                        is_active=True,
+                        **{role_field: True},
+                    )
+                    .exclude(pk=member.pk)
+                    .count()
+                )
 
                 if remaining == 0:
-                    return HttpResponseForbidden(
-                        f"You cannot delete the last active {role_name}."
-                    )
+                    return HttpResponseForbidden(f"You cannot delete the last active {role_name}.")
 
     member.delete()
 

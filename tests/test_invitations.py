@@ -49,9 +49,7 @@ def test_org_admin_can_invite_member(client, org_admin, organization):
 
     assert response.status_code == 302
 
-    invitation = Invitation.objects.get(
-        email="newmember@example.com"
-    )
+    invitation = Invitation.objects.get(email="newmember@example.com")
 
     assert invitation.organization == organization
     assert invitation.is_request_user is True
@@ -65,9 +63,7 @@ def test_org_admin_can_invite_member(client, org_admin, organization):
 
 @pytest.mark.django_db
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
-def test_invited_member_can_accept_invitation(
-    client, org_admin, organization
-):
+def test_invited_member_can_accept_invitation(client, org_admin, organization):
     client.force_login(org_admin)
 
     client.post(
@@ -78,12 +74,9 @@ def test_invited_member_can_accept_invitation(
         },
     )
 
-    invitation = Invitation.objects.get(
-        email="newmember@example.com"
-    )
+    invitation = Invitation.objects.get(email="newmember@example.com")
 
     # Extract the invitation token from the email link.
-   
 
     invitation_url = re.search(
         r"http://testserver(/team/accept/[^ \n]+)",
@@ -102,9 +95,7 @@ def test_invited_member_can_accept_invitation(
 
     assert response.status_code == 200
 
-    new_member = User.objects.get(
-        email="newmember@example.com"
-    )
+    new_member = User.objects.get(email="newmember@example.com")
 
     assert new_member.organization == organization
     assert new_member.is_request_user is True
@@ -115,9 +106,7 @@ def test_invited_member_can_accept_invitation(
 
 
 @pytest.mark.django_db
-def test_expired_invitation_cannot_be_accepted(
-    client, org_admin, organization
-):
+def test_expired_invitation_cannot_be_accepted(client, org_admin, organization):
     client.force_login(org_admin)
 
     client.post(
@@ -128,9 +117,7 @@ def test_expired_invitation_cannot_be_accepted(
         },
     )
 
-    invitation = Invitation.objects.get(
-        email="expired@example.com"
-    )
+    invitation = Invitation.objects.get(email="expired@example.com")
 
     invitation.expires_at = timezone.now() - timedelta(days=1)
     invitation.save(update_fields=["expires_at"])
@@ -138,28 +125,23 @@ def test_expired_invitation_cannot_be_accepted(
     token = None
 
     import re
+
     match = re.search(
         r"/team/accept/([^/\s]+)",
         mail.outbox[-1].body,
     )
     token = match.group(1)
 
-    response = client.get(
-        reverse("accept_invitation", args=[token])
-    )
+    response = client.get(reverse("accept_invitation", args=[token]))
 
     assert response.status_code == 400
 
-    assert not User.objects.filter(
-        email="expired@example.com"
-    ).exists()
+    assert not User.objects.filter(email="expired@example.com").exists()
 
 
 @pytest.mark.django_db
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
-def test_accepted_invitation_cannot_be_reused(
-    client, org_admin
-):
+def test_accepted_invitation_cannot_be_reused(client, org_admin):
     client.force_login(org_admin)
 
     client.post(
@@ -218,9 +200,7 @@ def test_request_user_cannot_invite_members(client, organization):
 
     assert response.status_code == 403
 
-    assert not Invitation.objects.filter(
-        email="newmember@example.com"
-    ).exists()
+    assert not Invitation.objects.filter(email="newmember@example.com").exists()
 
 
 @pytest.mark.django_db
@@ -247,8 +227,6 @@ def test_duplicate_pending_invitation_is_rejected(client, org_admin):
 
     assert second_response.status_code == 200
 
-    assert Invitation.objects.filter(
-        email="duplicate@example.com"
-    ).count() == 1
+    assert Invitation.objects.filter(email="duplicate@example.com").count() == 1
 
     assert len(mail.outbox) == 1

@@ -76,6 +76,7 @@ class RegistrationForm(forms.Form):
 class ResendVerificationForm(forms.Form):
     email = forms.EmailField()
 
+
 class InvitationForm(forms.Form):
     email = forms.EmailField()
 
@@ -86,11 +87,13 @@ class InvitationForm(forms.Form):
     def clean(self):
         cleaned = super().clean()
 
-        if not any([
-            cleaned.get("is_org_admin"),
-            cleaned.get("is_request_user"),
-            cleaned.get("is_review_user"),
-        ]):
+        if not any(
+            [
+                cleaned.get("is_org_admin"),
+                cleaned.get("is_request_user"),
+                cleaned.get("is_review_user"),
+            ]
+        ):
             raise forms.ValidationError("Select at least one role.")
 
         return cleaned
@@ -128,6 +131,7 @@ class AcceptInvitationForm(forms.Form):
 
         return cleaned
 
+
 class MemberEditForm(forms.Form):
     first_name = forms.CharField(max_length=150)
     last_name = forms.CharField(max_length=150)
@@ -139,11 +143,13 @@ class MemberEditForm(forms.Form):
     def clean(self):
         cleaned = super().clean()
 
-        if not any([
-            cleaned.get("is_org_admin"),
-            cleaned.get("is_request_user"),
-            cleaned.get("is_review_user"),
-        ]):
+        if not any(
+            [
+                cleaned.get("is_org_admin"),
+                cleaned.get("is_request_user"),
+                cleaned.get("is_review_user"),
+            ]
+        ):
             raise forms.ValidationError("Select at least one role.")
 
         return cleaned
