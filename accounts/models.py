@@ -1,6 +1,8 @@
+from datetime import timedelta
+
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
-
+from django.utils import timezone
 
 class UserManager(BaseUserManager):
     use_in_migrations = True
@@ -61,3 +63,34 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.email
+def invitation_expiry():
+    return timezone.now() + timedelta(days=7)
+
+
+class Invitation(models.Model):
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="invitations",
+    )
+    email = models.EmailField()
+    token_hash = models.CharField(max_length=64, unique=True)
+
+    is_org_admin = models.BooleanField(default=False)
+    is_request_user = models.BooleanField(default=False)
+    is_review_user = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(default=invitation_expiry)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    def is_valid(self):
+        return (
+            self.accepted_at is None
+            and self.revoked_at is None
+            and timezone.now() < self.expires_at
+        )
+
+    def __str__(self):
+        return f"{self.email} - {self.organization.name}"

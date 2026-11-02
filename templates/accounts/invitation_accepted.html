@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Invitation Accepted!</h1>
+
+<p>Your account has been created successfully.</p>
+
+<p>You can now log in to BizPartnerCheck.</p>
+
+<a href="{% url 'login' %}">Go to Login</a>
+{% endblock %}
