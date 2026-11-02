@@ -1,12 +1,11 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BizPartnerCheck</title>
-</head>
-<body>
-  <h1>BizPartnerCheck</h1>
-  <p>Automated due-diligence checks on business partners for Austrian construction companies.</p>
-</body>
-</html>
+{% extends "base.html" %}
+{% block content %}
+  <h1>Check your business partners automatically</h1>
+  <p>BizPartnerCheck runs the due-diligence checks an Austrian construction company needs before contracting a partner and keeps every result as evidence.</p>
+  {% if not user.is_authenticated %}
+    <p>
+      <a class="button" href="{% url 'register' %}">Register your organization for free</a>
+      <a class="button" href="{% url 'login' %}">Login</a>
+    </p>
+  {% endif %}
+{% endblock %}

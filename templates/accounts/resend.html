@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>Send the confirmation link again</h1>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    <label for="{{ form.email.id_for_label }}">Email address you registered with</label>
+    {{ form.email }}
+    {{ form.email.errors }}
+    <button type="submit">Send link</button>
+  </form>
+{% endblock %}

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}BizPartnerCheck{% endblock %}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+    header a { margin-left: 1rem; }
+    label { display: block; font-weight: 600; margin-top: 1rem; }
+    input:not([type=checkbox]), textarea { width: 100%; padding: .4rem; box-sizing: border-box; }
+    .helptext { color: #555; font-size: .9rem; }
+    .errorlist { color: #b00020; padding-left: 1.2rem; }
+    button, .button { margin-top: 1.5rem; padding: .5rem 1.2rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="{% url 'home' %}"><strong>BizPartnerCheck</strong></a>
+    <nav>
+      {% if user.is_authenticated %}
+        <span>{{ user.email }}</span>
+        <form method="post" action="{% url 'logout' %}" style="display:inline">{% csrf_token %}<button type="submit" style="margin:0 0 0 1rem">Log out</button></form>
+      {% else %}
+        <a href="{% url 'register' %}">Register</a>
+        <a href="{% url 'login' %}">Login</a>
+      {% endif %}
+    </nav>
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+</body>
+</html>
