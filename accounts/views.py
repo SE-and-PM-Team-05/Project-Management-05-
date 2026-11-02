@@ -20,6 +20,7 @@ from .forms import (
 from .models import Invitation, User
 from .verification import read_token, send_verification_email
 
+
 def register(request):
     form = RegistrationForm(request.POST or None)
     if request.method == "POST" and form.is_valid():

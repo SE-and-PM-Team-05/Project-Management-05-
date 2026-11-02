@@ -1,11 +1,13 @@
+import re
+from datetime import timedelta
 
 import pytest
-
 from django.core import mail
 from django.test import override_settings
 from django.urls import reverse
+from django.utils import timezone
 
-from accounts.models import Organization, User, Invitation
+from accounts.models import Invitation, Organization, User
 
 
 @pytest.fixture
@@ -81,7 +83,7 @@ def test_invited_member_can_accept_invitation(
     )
 
     # Extract the invitation token from the email link.
-    import re
+   
 
     invitation_url = re.search(
         r"http://testserver(/team/accept/[^ \n]+)",
@@ -110,10 +112,6 @@ def test_invited_member_can_accept_invitation(
 
     invitation.refresh_from_db()
     assert invitation.accepted_at is not None
-
-
-from datetime import timedelta
-from django.utils import timezone
 
 
 @pytest.mark.django_db

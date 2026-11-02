@@ -4,6 +4,7 @@ from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
 from django.utils import timezone
 
+
 class UserManager(BaseUserManager):
     use_in_migrations = True
 
@@ -85,12 +86,12 @@ class Invitation(models.Model):
     accepted_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
 
+    def __str__(self):
+        return f"{self.email} - {self.organization.name}"
+
     def is_valid(self):
         return (
             self.accepted_at is None
             and self.revoked_at is None
             and timezone.now() < self.expires_at
         )
-
-    def __str__(self):
-        return f"{self.email} - {self.organization.name}"
