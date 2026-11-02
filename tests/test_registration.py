@@ -38,12 +38,40 @@ def test_landing_page_offers_register_and_login(client):
     assert reverse("login") in html
 
 
-@pytest.mark.parametrize("vat", ["ATU12345678", "DE123456789", "FR12345678901", "NL123456789B01"])
+@pytest.mark.parametrize(
+    "vat",
+    [
+        "ATU12345678",
+        "DE123456789",
+        "FR12345678901",
+        "NL123456789B01",
+        "BE0123456789",
+        "EL123456789",
+        "ESX1234567X",
+        "IE1234567WA",
+        "XIGD123",
+    ],
+)
 def test_valid_vat_formats(vat):
     validate_vat_number(vat)
 
 
-@pytest.mark.parametrize("vat", ["U12345678", "AT12345678", "ATU1234567", "DE12345678", "US123456789", ""])
+@pytest.mark.parametrize(
+    "vat",
+    [
+        "U12345678",
+        "AT12345678",
+        "ATU1234567",
+        "DE12345678",
+        "US123456789",
+        "",
+        "GR123456789",
+        "BE2123456789",
+        "NL123456789",
+        "FR123",
+        "ITABCDEFGHIJK",
+    ],
+)
 def test_malformed_vat_rejected(vat):
     with pytest.raises(ValidationError):
         validate_vat_number(vat)
