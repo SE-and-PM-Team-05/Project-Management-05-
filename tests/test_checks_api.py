@@ -5,10 +5,12 @@ from unittest import mock
 
 import pytest
 import requests
+from django.db import DatabaseError
 from django.urls import reverse
 from django.utils import timezone
 
 from accounts.models import Organization, User
+from checks.models import CheckRequest, CheckRequestResult
 
 URL = "/api/v1/checks"
 VALID_INPUT = {"vatNumber": "atu 123.456-78", "companyName": "Muster Bau GmbH"}
@@ -229,14 +231,108 @@ def test_req_int_012_get_returns_405_json(api):
     assert response.json()["error"]["code"] == "METHOD_NOT_ALLOWED"
 
 
-# --- Nothing is stored yet (decided with the PO for SCRUM-24; REQ-FUNC-050 follows in Sprint 2) ---
+# --- Storing (REQ-REL-004, REQ-FUNC-041, REQ-FUNC-050, REQ-FUNC-051) ---
 
 
-def test_scrum_24_check_creates_no_database_rows(api, vies, django_assert_max_num_queries):
-    # Only the session and user lookups; no INSERT happens.
-    with django_assert_max_num_queries(5) as context:
-        post(api, VALID_INPUT)
-    assert not any(q["sql"].lstrip().upper().startswith("INSERT") for q in context.captured_queries)
+def test_req_rel_004_check_is_stored_with_all_results(api, vies, request_user):
+    body = post(api, {**VALID_INPUT, "companyRegisterNumber": "123456a", "reference": "PO-4711"}).json()
+
+    stored = CheckRequest.objects.get()
+    assert body["requestId"] == str(stored.id)
+    assert stored.organization == request_user.organization
+    assert stored.requested_by == request_user
+    assert stored.requested_by_name == "Anna Beispiel"
+    assert stored.channel == "api"
+    assert stored.vat_number == "ATU12345678"
+    assert stored.company_name == "Muster Bau GmbH"
+    assert stored.company_register_number == "123456a"
+    assert stored.reference == "PO-4711"
+    assert stored.received_at <= stored.completed_at
+    assert [(r.check_name, r.result) for r in stored.results.all()] == [
+        ("vatValid", "TRUE"),
+        ("nameMatchesVat", "TRUE"),
+    ]
+    # The response is exactly what was stored.
+    assert {**stored.to_json(), "disclaimer": body["disclaimer"]} == body
+
+
+def test_req_func_050_request_with_unknown_results_is_stored_too(api, vies):
+    vies.side_effect = requests.ConnectionError()
+    body = post(api, VALID_INPUT).json()
+    result = CheckRequestResult.objects.get(request_id=body["requestId"], check_name="vatValid")
+    assert (result.result, result.reason, result.details) == (
+        "UNKNOWN",
+        "SOURCE_UNAVAILABLE",
+        {"error": "NETWORK_ERROR"},
+    )
+
+
+def test_req_func_041_each_check_creates_a_new_record(api, vies):
+    first = post(api, VALID_INPUT).json()["requestId"]
+    second = post(api, VALID_INPUT).json()["requestId"]
+    assert first != second
+    assert CheckRequest.objects.count() == 2
+    assert CheckRequestResult.objects.count() == 4
+
+
+@pytest.mark.parametrize("data", [{}, {"vatNumber": "ATU1", "companyName": "X"}])
+def test_req_func_030_invalid_input_stores_nothing(api, vies, data):
+    assert post(api, data).status_code == 400
+    assert not CheckRequest.objects.exists()
+
+
+def test_req_int_011_rejected_calls_store_nothing(client, vies, db):
+    assert post(client, VALID_INPUT).status_code == 401
+    client.force_login(make_user(is_review_user=True))
+    assert post(client, VALID_INPUT).status_code == 403
+    assert not CheckRequest.objects.exists()
+
+
+def test_req_rel_004_database_failure_returns_500_and_leaves_no_partial_record(api, vies):
+    with mock.patch.object(CheckRequestResult.objects, "bulk_create", side_effect=DatabaseError("disk full")):
+        response = post(api, VALID_INPUT)
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "INTERNAL_ERROR"
+    assert not CheckRequest.objects.exists()
+    assert not CheckRequestResult.objects.exists()
+
+
+def test_req_func_051_stored_results_cannot_be_changed(api, vies):
+    post(api, VALID_INPUT)
+    stored = CheckRequest.objects.get()
+    stored.company_name = "Changed"
+    with pytest.raises(ValueError):
+        stored.save()
+    result = stored.results.first()
+    result.result = "FALSE"
+    with pytest.raises(ValueError):
+        result.save()
+    stored.refresh_from_db()
+    assert stored.company_name == "Muster Bau GmbH"
+    assert stored.results.first().result == "TRUE"
+
+
+def test_req_func_051_request_can_be_deleted_as_a_whole(api, vies):
+    post(api, VALID_INPUT)
+    CheckRequest.objects.get().delete()
+    assert not CheckRequestResult.objects.exists()
+
+
+def test_req_comp_002_deleting_the_user_keeps_the_request_and_the_name(api, vies, request_user):
+    post(api, VALID_INPUT)
+    request_user.delete()
+    stored = CheckRequest.objects.get()
+    assert stored.requested_by is None
+    assert stored.requested_by_name == "Anna Beispiel"
+
+
+def test_req_func_013_request_is_stored_under_the_own_organization_only(client, vies, db):
+    user_a = make_user(email="a@example.com", org_name="A Bau GmbH", is_request_user=True)
+    user_b = make_user(email="b@example.com", org_name="B Bau GmbH", is_request_user=True)
+    client.force_login(user_b)
+    post(client, VALID_INPUT)
+    assert not user_a.organization.check_requests.exists()
+    assert user_b.organization.check_requests.count() == 1
 
 
 # --- Added in the SRS review ---

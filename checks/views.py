@@ -2,9 +2,9 @@
 
 import json
 import logging
-import uuid
 
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.http import JsonResponse
 from django.middleware.csrf import CsrfViewMiddleware
 from django.utils.translation import gettext as _
@@ -12,7 +12,8 @@ from django.utils.translation import gettext_lazy
 from django.views.decorators.csrf import csrf_exempt
 
 from .forms import parse_check_input
-from .results import format_utc, utc_now
+from .models import CheckRequest, CheckRequestResult
+from .results import utc_now
 from .runner import run_checks
 
 logger = logging.getLogger(__name__)
@@ -50,8 +51,8 @@ def create_check(request):
 def _create_check(request):
     """POST /api/v1/checks: run the VIES checks for one partner and return the result (UC-04).
 
-    Authentication is the web session for now (REQ-INT-011); API tokens follow in Sprint 2 (REQ-FUNC-020).
-    The request is not stored yet; storing follows with REQ-FUNC-050 in Sprint 2.
+    Authentication is the web session for now (REQ-INT-011); API tokens follow with SCRUM-48. Every accepted
+    request is stored as evidence before the response is sent (REQ-REL-004).
     """
     received_at = utc_now()
     if request.method != "POST":
@@ -78,31 +79,47 @@ def _create_check(request):
         return api_error(400, "INVALID_INPUT", _("Some fields are invalid."), error.message_dict)
 
     checks = run_checks(partner)
-
-    partner_json = {"companyName": partner.company_name, "vatNumber": partner.vat_number}
-    if partner.company_register_number:
-        partner_json["companyRegisterNumber"] = partner.company_register_number
-    if partner.address:
-        partner_json["address"] = partner.address
-    if partner.required_license_codes:
-        partner_json["requiredLicenseCodes"] = list(partner.required_license_codes)
+    check_request = store_check_request(user, partner, reference, checks, received_at)
 
     # Response shape of SRS Appendix B (REQ-FUNC-045); only the checks implemented so far are listed.
-    body = {
-        "requestId": str(uuid.uuid4()),
-        "receivedAt": format_utc(received_at),
-        "completedAt": format_utc(utc_now()),
-        "organization": user.organization.name,
-        "requestedBy": {
-            "user": user.get_full_name() or user.email,
-            # TODO(SCRUM-24): session-authenticated until API tokens exist (Sprint 2); then the token name.
-            "channel": "api",
-            "tokenName": None,
-        },
-        "partner": partner_json,
-    }
-    if reference:
-        body["reference"] = reference
-    body["checks"] = [result.to_json() for result in checks]
+    body = check_request.to_json()
     body["disclaimer"] = str(DISCLAIMER)  # REQ-FUNC-048
     return JsonResponse(body, status=200)
+
+
+def store_check_request(user, partner, reference, checks, received_at):
+    """Store the request with all its results, or nothing (REQ-REL-004, REQ-FUNC-041).
+
+    A database error propagates, so the caller answers with 500 and no partial record remains. The sources
+    are queried before the transaction starts, so it stays short.
+    """
+    with transaction.atomic():
+        check_request = CheckRequest.objects.create(
+            organization=user.organization,
+            requested_by=user,
+            requested_by_name=user.get_full_name() or user.email,
+            # Called through the API with a web session until API tokens exist (SCRUM-48).
+            channel=CheckRequest.CHANNEL_API,
+            vat_number=partner.vat_number,
+            company_name=partner.company_name,
+            company_register_number=partner.company_register_number,
+            address=partner.address,
+            required_license_codes=list(partner.required_license_codes),
+            reference=reference,
+            received_at=received_at,
+            completed_at=utc_now(),
+        )
+        CheckRequestResult.objects.bulk_create(
+            CheckRequestResult(
+                request=check_request,
+                position=position,
+                check_name=result.check,
+                result=result.result,
+                reason=result.reason or "",
+                source=result.source,
+                data_timestamp=result.data_timestamp,
+                details=result.details,
+            )
+            for position, result in enumerate(checks)
+        )
+    return check_request

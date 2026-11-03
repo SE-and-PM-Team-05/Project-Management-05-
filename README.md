@@ -89,9 +89,9 @@ All endpoints live under `/api/v1/` and answer in JSON. Times are UTC in ISO 860
 
 ### `POST /api/v1/checks` – check a business partner
 
-Runs the checks implemented so far, `vatValid` and `nameMatchesVat`, both answered by one call to VIES (REQ-FUNC-030…032). The other checks (fake-company list, HFU, Firmenbuch, GISA) are added in later sprints and are not in the response yet. The request is **not stored yet**; storing follows with REQ-FUNC-050 in Sprint 2.
+Runs the checks implemented so far, `vatValid` and `nameMatchesVat`, both answered by one call to VIES (REQ-FUNC-030…032). The other checks (fake-company list, HFU, Firmenbuch, GISA) are added in later sprints and are not in the response yet. Every accepted request is **stored** as evidence, atomically with all its results (REQ-REL-004); `requestId` is its ID. Stored requests cannot be changed, only deleted as a whole (REQ-FUNC-051). Invalid or rejected calls store nothing.
 
-**Authentication (for now):** a logged-in web session of a user with the Request User role, plus the CSRF token in the `X-CSRFToken` header. API tokens follow in Sprint 2 (REQ-FUNC-020).
+**Authentication (for now):** a logged-in web session of a user with the Request User role, plus the CSRF token in the `X-CSRFToken` header. API tokens follow with SCRUM-48 (REQ-FUNC-020).
 
 Request body:
 
@@ -135,7 +135,7 @@ Errors return `{"error": {"code": "…", "message": "…", "fields": {…}}}`:
 | 403 | `PERMISSION_DENIED` | User lacks the Request User role. |
 | 403 | `CSRF_FAILED` | Session call without `X-CSRFToken` header. |
 | 405 | `METHOD_NOT_ALLOWED` | Anything other than POST. |
-| 500 | `INTERNAL_ERROR` | Unexpected error on our side; details only in the server log. |
+| 500 | `INTERNAL_ERROR` | Unexpected error on our side, e.g. the request could not be stored; nothing is stored then. Details only in the server log. |
 
 **Try it locally:** log in at http://localhost:8000/login/ with a Request User, open the browser console on that page and run:
 
