@@ -75,3 +75,81 @@ class RegistrationForm(forms.Form):
 
 class ResendVerificationForm(forms.Form):
     email = forms.EmailField()
+
+
+class InvitationForm(forms.Form):
+    email = forms.EmailField()
+
+    is_org_admin = forms.BooleanField(required=False, label="Org Admin")
+    is_request_user = forms.BooleanField(required=False, label="Request User")
+    is_review_user = forms.BooleanField(required=False, label="Review User")
+
+    def clean(self):
+        cleaned = super().clean()
+
+        if not any(
+            [
+                cleaned.get("is_org_admin"),
+                cleaned.get("is_request_user"),
+                cleaned.get("is_review_user"),
+            ]
+        ):
+            raise forms.ValidationError("Select at least one role.")
+
+        return cleaned
+
+
+class AcceptInvitationForm(forms.Form):
+    first_name = forms.CharField(max_length=150)
+    last_name = forms.CharField(max_length=150)
+    password1 = forms.CharField(
+        label="Password",
+        widget=forms.PasswordInput,
+    )
+    password2 = forms.CharField(
+        label="Repeat password",
+        widget=forms.PasswordInput,
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+
+        password1 = cleaned.get("password1")
+        password2 = cleaned.get("password2")
+
+        if password1 and password2 and password1 != password2:
+            self.add_error("password2", "The passwords do not match.")
+        elif password1:
+            candidate = User(
+                first_name=cleaned.get("first_name", ""),
+                last_name=cleaned.get("last_name", ""),
+            )
+            try:
+                validate_password(password1, candidate)
+            except forms.ValidationError as error:
+                self.add_error("password1", error)
+
+        return cleaned
+
+
+class MemberEditForm(forms.Form):
+    first_name = forms.CharField(max_length=150)
+    last_name = forms.CharField(max_length=150)
+
+    is_org_admin = forms.BooleanField(required=False, label="Org Admin")
+    is_request_user = forms.BooleanField(required=False, label="Request User")
+    is_review_user = forms.BooleanField(required=False, label="Review User")
+
+    def clean(self):
+        cleaned = super().clean()
+
+        if not any(
+            [
+                cleaned.get("is_org_admin"),
+                cleaned.get("is_request_user"),
+                cleaned.get("is_review_user"),
+            ]
+        ):
+            raise forms.ValidationError("Select at least one role.")
+
+        return cleaned
