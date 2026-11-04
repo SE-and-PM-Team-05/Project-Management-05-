@@ -30,8 +30,11 @@ source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env
 python manage.py migrate
+python manage.py createcachetable
 python manage.py create_superadmin you@example.com
 ```
+
+`createcachetable` creates the table Django's cache lives in; the failed-login counter needs it. Run it once per database, including on the server when deployment is set up (SCRUM-42).
 
 `create_superadmin` prints a one-time password. Log in at http://localhost:8000/admin/ and choose a new one. The command refuses to run if a Super Admin already exists.
 
@@ -48,6 +51,8 @@ ruff check . && ruff format --check . && pytest
 ```
 
 Emails (verification links, password resets) are printed in the `runserver` terminal unless `EMAIL_HOST` is set.
+
+Login rules (SCRUM-22): after 5 failed logins an account is locked for 15 minutes, and a session ends after 8 hours without activity. "Forgot your password?" on the login page sends a reset link by email.
 
 ### Environment variables
 

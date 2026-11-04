@@ -1,8 +1,10 @@
 from django import forms
+from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
 from django.utils import timezone
 
+from . import lockout
 from .models import Organization, User
 from .validators import normalize_vat_number, validate_vat_number
 
@@ -75,3 +77,15 @@ class RegistrationForm(forms.Form):
 
 class ResendVerificationForm(forms.Form):
     email = forms.EmailField()
+
+
+class LoginForm(AuthenticationForm):
+    """Login that tells a locked-out user why, instead of the generic error (REQ-SEC-004)."""
+
+    def clean(self):
+        email = self.cleaned_data.get("username")
+        if email and lockout.is_locked(email):
+            raise forms.ValidationError(
+                "Too many failed login attempts. Your account is locked for 15 minutes.", code="locked"
+            )
+        return super().clean()
