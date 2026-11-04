@@ -1,0 +1,77 @@
+
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Manage Team Members</h1>
+
+<p>View the members of your organization.</p>
+
+{% if messages %}
+    {% for message in messages %}
+        <p>{{ message }}</p>
+    {% endfor %}
+{% endif %}
+<a href="{% url 'invite_member' %}">Invite a new member</a>
+
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Roles</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        {% for member in members %}
+        <tr>
+            <td>{{ member.first_name }} {{ member.last_name }}</td>
+            <td>{{ member.email }}</td>
+
+            <td>
+                {% if member.is_org_admin %}Org Admin {% endif %}
+                {% if member.is_request_user %}Request User {% endif %}
+                {% if member.is_review_user %}Review User{% endif %}
+            </td>
+
+            <td>
+                {% if member.is_active %}
+                    Active
+                {% else %}
+                    Deactivated
+                {% endif %}
+            </td>
+
+            <td>
+                <a href="{% url 'edit_member' member.id %}">Edit</a>
+
+                {% if member.is_active %}
+                    <form method="post" action="{% url 'deactivate_member' member.id %}">
+                        {% csrf_token %}
+                        <button type="submit">Deactivate</button>
+                    </form>
+                {% else %}
+                    <form method="post" action="{% url 'reactivate_member' member.id %}">
+                        {% csrf_token %}
+                        <button type="submit">Reactivate</button>
+                    </form>
+                {% endif %}
+
+                <form method="post" action="{% url 'delete_member' member.id %}">
+                    {% csrf_token %}
+                    <button type="submit" onclick="return confirm('Are you sure you want to permanently delete this member?');">
+                        Delete
+                    </button>
+                </form>
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="5">No team members found.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
