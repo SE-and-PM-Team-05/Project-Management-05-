@@ -48,6 +48,10 @@ def parse_database_url(url):
         "HOST": parts.hostname or "",
         "PORT": str(parts.port or ""),
         "CONN_MAX_AGE": 60,
+        # Neon suspends idle databases: check a reused connection before handing it out.
+        "CONN_HEALTH_CHECKS": True,
+        # Neon's pooled endpoint (PgBouncer, transaction mode) doesn't support server-side cursors.
+        "DISABLE_SERVER_SIDE_CURSORS": True,
         "OPTIONS": dict(parse_qsl(parts.query)),
     }
 

@@ -15,6 +15,9 @@ def test_parse_database_url():
     assert db["HOST"] == "db.example.com"
     assert db["PORT"] == "6543"
     assert db["OPTIONS"] == {}
+    # Neon suspends idle databases and its pooled endpoint uses PgBouncer in transaction mode.
+    assert db["CONN_HEALTH_CHECKS"] is True
+    assert db["DISABLE_SERVER_SIDE_CURSORS"] is True
 
 
 def test_parse_database_url_passes_neon_ssl_options():

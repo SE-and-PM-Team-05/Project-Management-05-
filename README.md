@@ -4,7 +4,7 @@ Team 05 · Software Engineering and Project Management · IMC Krems · Practical
 
 BizPartnerCheck is a multi-tenant web service that automates the due-diligence checks an Austrian construction company must run before contracting a business partner (VAT number, fake-company list, HFU list, company register, business licenses) and stores every check as evidence.
 
-- **Requirements:** SRS v2.1 (combined team version), kept in the team folder; changes follow REQ-CM-001
+- **Requirements:** [SRS v2.4](docs/SRS.md) (combined team version); changes follow REQ-CM-001 and are recorded in its Revision History
 - **Backlog:** Jira project [SCRUM](https://sepmimc.atlassian.net/jira/software/projects/SCRUM/boards/1)
 - **AI agent instructions:** [AGENTS.md](AGENTS.md)
 
@@ -142,7 +142,7 @@ A push to `main` deploys only after CI is green: the `deploy` job in `.github/wo
 
 ### One-time setup
 
-1. **Neon:** create a project in an EU region (e.g. AWS Europe Central, Frankfurt) and copy its connection string. It looks like `postgresql://user:password@ep-….eu-central-1.aws.neon.tech/neondb?sslmode=require`.
+1. **Neon:** create a project in an EU region (e.g. AWS Europe Central, Frankfurt) and copy its connection string. It looks like `postgresql://user:password@ep-….eu-central-1.aws.neon.tech/neondb?sslmode=require`. Both the pooled (`-pooler` in the host) and the direct connection string work: the settings check reused connections and switch off server-side cursors, which Neon's pooler doesn't support.
 2. **Brevo:** create an account, verify the sender address (best on a domain the team owns, with Brevo's SPF and DKIM records; mail "from" a Gmail address tends to land in spam) and create an **SMTP key** (Settings → SMTP & API). Note the SMTP login shown there.
 3. **Render:** New → Web Service → connect this GitHub repository (an organization owner must allow Render's GitHub app for `SE-and-PM-Team-05`), then:
 
