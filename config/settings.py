@@ -108,6 +108,8 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {"default": parse_database_url(os.environ.get("DATABASE_URL", "postgres:///bizpartnercheck"))}
 
 AUTH_USER_MODEL = "accounts.User"
+# Django's email + password login, refusing locked accounts (REQ-SEC-004).
+AUTHENTICATION_BACKENDS = ["accounts.backends.LockoutBackend"]
 LOGIN_REDIRECT_URL = "home"
 LOGOUT_REDIRECT_URL = "home"
 
@@ -131,6 +133,15 @@ STORAGES = {
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# The database cache is shared by all app processes, so failed-login counts (REQ-SEC-004) add up across them.
+# Its table is created once per database with `python manage.py createcachetable`.
+CACHES = {"default": {"BACKEND": "django.core.cache.backends.db.DatabaseCache", "LOCATION": "django_cache"}}
+
+# A session ends after 8 h without activity (REQ-SEC-006): every request renews the 8 h. The session and CSRF
+# cookies are HttpOnly / SameSite=Lax by Django's defaults, and Secure outside debug mode (below).
+SESSION_COOKIE_AGE = 8 * 60 * 60
+SESSION_SAVE_EVERY_REQUEST = True
 
 # Email: printed to the console unless an SMTP server is configured.
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
