@@ -14,6 +14,14 @@ def test_parse_database_url():
     assert db["PASSWORD"] == "p@ss"
     assert db["HOST"] == "db.example.com"
     assert db["PORT"] == "6543"
+    assert db["OPTIONS"] == {}
+
+
+def test_parse_database_url_passes_neon_ssl_options():
+    url = "postgresql://app:secret@ep-example.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+    db = parse_database_url(url)
+    assert db["NAME"] == "neondb"
+    assert db["OPTIONS"] == {"sslmode": "require", "channel_binding": "require"}
 
 
 def test_home_and_healthz(client):
@@ -58,3 +66,18 @@ def test_one_time_password_must_be_changed(client):
     admin.refresh_from_db()
     assert not admin.must_change_password
     assert client.get(reverse("admin:index")).status_code == 200
+
+
+def test_render_hostname_is_allowed(monkeypatch):
+    import importlib
+
+    import config.settings as config_settings
+
+    monkeypatch.setenv("RENDER_EXTERNAL_HOSTNAME", "bizpartnercheck.onrender.com")
+    reloaded = importlib.reload(config_settings)
+    try:
+        assert "bizpartnercheck.onrender.com" in reloaded.ALLOWED_HOSTS
+        assert "https://bizpartnercheck.onrender.com" in reloaded.CSRF_TRUSTED_ORIGINS
+    finally:
+        monkeypatch.delenv("RENDER_EXTERNAL_HOSTNAME")
+        importlib.reload(config_settings)

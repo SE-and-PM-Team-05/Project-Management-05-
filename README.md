@@ -10,7 +10,7 @@ BizPartnerCheck is a multi-tenant web service that automates the due-diligence c
 
 ## Status
 
-The Django skeleton and CI are in place (**SCRUM-17**). Deployment is added once **SCRUM-42** chooses the host and database provider; until then the `deploy` job in CI is a placeholder.
+The Django skeleton and CI are in place (**SCRUM-17**). The app is deployed to **Render**, with the database on **Neon** and email through **Brevo** (decided in **SCRUM-42**); see [Deployment](#deployment) for the one-time setup.
 
 Organizations can register (**SCRUM-21**), and `POST /api/v1/checks` checks a VAT number and company name against VIES (**SCRUM-24**, see [API](#api)).
 
@@ -82,7 +82,7 @@ In every new terminal, run `.venv\Scripts\Activate.ps1` in the repository folder
 
 ### Both systems
 
-`createcachetable` creates the table Django's cache lives in; the failed-login counter needs it. Run it once per database, including on the server when deployment is set up (SCRUM-42).
+`createcachetable` creates the table Django's cache lives in; the failed-login counter needs it. Run it once per database; on Render, `build.sh` does it on every deploy.
 
 `create_superadmin` prints a one-time password. Log in at http://localhost:8000/admin/ and choose a new one. The command refuses to run if a Super Admin already exists.
 
@@ -111,7 +111,7 @@ Login rules (SCRUM-22): after 5 failed logins an account is locked for 15 minute
 | `DJANGO_DEBUG` | no | `false` | `true` only on your own machine. Off means HTTPS only, HSTS and secure cookies. |
 | `DJANGO_SECRET_KEY` | when debug is off | dev key | Long random string; different per environment. |
 | `DJANGO_ALLOWED_HOSTS` | when debug is off | – | Comma-separated domain names, e.g. `bizpartnercheck.example.com`. |
-| `DATABASE_URL` | no | `postgres:///bizpartnercheck` | `postgres://user:password@host:port/name`. |
+| `DATABASE_URL` | no | `postgres:///bizpartnercheck` | `postgres://user:password@host:port/name`; options such as Neon's `?sslmode=require` are passed to PostgreSQL. |
 | `EMAIL_HOST` | no | – | SMTP server; if empty, emails go to the console. |
 | `EMAIL_PORT` | no | `587` | SMTP port (STARTTLS). |
 | `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` | with `EMAIL_HOST` | – | SMTP login. |
@@ -130,9 +130,49 @@ pip install -r requirements.txt -r requirements-dev.txt
 
 ### CI
 
-Every push to `main` and every pull request runs `.github/workflows/ci.yml` against PostgreSQL 18: ruff, formatting, missing migrations, Django's deployment checks and pytest. Only a green build on `main` reaches the `deploy` job.
+Every push to `main` and every pull request runs `.github/workflows/ci.yml` against PostgreSQL 18: ruff, formatting, missing migrations, Django's deployment checks and pytest. Only a green build on `main` reaches the `deploy` job, which triggers a deploy on Render.
 
 Reviews before merging are enforced by a branch protection rule on `main` (Settings → Branches): require a pull request with 1 approval and the `test` status check.
+
+## Deployment
+
+Production runs on **Render** (app, Frankfurt), **Neon** (PostgreSQL, EU) and **Brevo** (SMTP email). The free tiers are enough for the course. Render's free web service sleeps when nobody uses it and takes a while to wake up, so open the site a minute before a demo.
+
+A push to `main` deploys only after CI is green: the `deploy` job in `.github/workflows/ci.yml` calls Render's deploy hook, and Render's own auto-deploy is switched off. On each deploy Render runs `build.sh` (install, `collectstatic`, `migrate`, `createcachetable`) and then starts gunicorn.
+
+### One-time setup
+
+1. **Neon:** create a project in an EU region (e.g. AWS Europe Central, Frankfurt) and copy its connection string. It looks like `postgresql://user:password@ep-….eu-central-1.aws.neon.tech/neondb?sslmode=require`.
+2. **Brevo:** create an account, verify the sender address (best on a domain the team owns, with Brevo's SPF and DKIM records; mail "from" a Gmail address tends to land in spam) and create an **SMTP key** (Settings → SMTP & API). Note the SMTP login shown there.
+3. **Render:** New → Web Service → connect this GitHub repository (an organization owner must allow Render's GitHub app for `SE-and-PM-Team-05`), then:
+
+   | Setting | Value |
+   |---|---|
+   | Branch | `main` |
+   | Region | Frankfurt (EU Central) |
+   | Runtime | Python |
+   | Build Command | `bash build.sh` |
+   | Start Command | `gunicorn config.wsgi:application --bind 0.0.0.0:$PORT` |
+   | Instance Type | Free |
+   | Health Check Path | `/healthz` |
+   | Auto-Deploy | Off (CI triggers deploys) |
+
+   Environment variables (Render → Environment). Never commit these values:
+
+   | Variable | Value |
+   |---|---|
+   | `DJANGO_SECRET_KEY` | A new random string, e.g. from `python -c "import secrets; print(secrets.token_urlsafe(50))"` |
+   | `DJANGO_ALLOWED_HOSTS` | Only needed for an own domain; Render's `onrender.com` address is added automatically from `RENDER_EXTERNAL_HOSTNAME` |
+   | `DATABASE_URL` | The Neon connection string from step 1 |
+   | `EMAIL_HOST` | `smtp-relay.brevo.com` |
+   | `EMAIL_PORT` | `587` |
+   | `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` | The Brevo SMTP login and SMTP key from step 2 |
+   | `DEFAULT_FROM_EMAIL` | The verified sender, e.g. `BizPartnerCheck <noreply@your-domain>` |
+
+   Render reads the Python version from `.python-version`; if the build log shows a different version, also set `PYTHON_VERSION` to the full 3.14 version.
+4. **Deploy hook:** Render → the service → Settings → Deploy Hook → copy the URL. In GitHub: repository Settings → Secrets and variables → Actions → New repository secret named `RENDER_DEPLOY_HOOK_URL` with that URL. Without it the `deploy` job only prints a warning.
+5. **First deploy:** Render → Manual Deploy → Deploy latest commit (later deploys happen automatically after green CI on `main`). Then open `https://<your-service>.onrender.com/healthz`; it should answer `ok`.
+6. **Super Admin:** the free plan has no shell on the server, so create the Super Admin from your own machine against the Neon database. In a terminal in this folder with `.venv` active, set `DATABASE_URL` to the Neon connection string for that terminal only, run `python manage.py create_superadmin you@example.com`, and log in at `https://<your-service>.onrender.com/admin/` with the one-time password it prints.
 
 ## API
 
@@ -207,7 +247,7 @@ Each source is one adapter in `checks/sources/` that subclasses `SourceAdapter` 
 
 ## Tech stack
 
-Python + Django (templates, built-in authentication, admin, translations, ORM), PostgreSQL, `requests` + `feedparser` for the data sources, pytest + ruff, GitHub Actions for CI and the daily sync trigger, one managed host in the EU.
+Python + Django (templates, built-in authentication, admin, translations, ORM), PostgreSQL, `requests` + `feedparser` for the data sources, pytest + ruff, GitHub Actions for CI, deployment and the daily sync trigger. Hosting: Render (app, Frankfurt), Neon (PostgreSQL, EU), Brevo (SMTP email).
 
 Keep it minimal: add a library only when a requirement needs it, and agree on it in the team first.
 

@@ -7,7 +7,7 @@ and .env.example.
 
 import os
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qsl, unquote, urlparse
 
 from django.core.exceptions import ImproperlyConfigured
 
@@ -33,7 +33,10 @@ def env_bool(name, default=False):
 
 
 def parse_database_url(url):
-    """Turn postgres://user:password@host:port/name into Django's DATABASES entry."""
+    """Turn postgres://user:password@host:port/name?option=value into Django's DATABASES entry.
+
+    Query options such as Neon's ?sslmode=require are passed on to the PostgreSQL driver.
+    """
     parts = urlparse(url)
     if parts.scheme not in ("postgres", "postgresql"):
         raise ImproperlyConfigured("DATABASE_URL must start with postgres:// or postgresql://")
@@ -45,6 +48,7 @@ def parse_database_url(url):
         "HOST": parts.hostname or "",
         "PORT": str(parts.port or ""),
         "CONN_MAX_AGE": 60,
+        "OPTIONS": dict(parse_qsl(parts.query)),
     }
 
 
@@ -59,6 +63,9 @@ if not SECRET_KEY:
 ALLOWED_HOSTS = [h for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",") if h]
 if DEBUG:
     ALLOWED_HOSTS += ["localhost", "127.0.0.1"]
+# Render sets this to the service's onrender.com address.
+if os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
+    ALLOWED_HOSTS.append(os.environ["RENDER_EXTERNAL_HOSTNAME"])
 CSRF_TRUSTED_ORIGINS = [f"https://{h}" for h in ALLOWED_HOSTS if h not in ("localhost", "127.0.0.1")]
 
 INSTALLED_APPS = [
