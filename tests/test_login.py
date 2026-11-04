@@ -10,6 +10,7 @@ from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 
+import config.settings as config_settings
 from accounts import lockout
 from accounts.models import Organization, User
 
@@ -147,8 +148,9 @@ def test_session_cookie_flags(client, user, settings):
     cookie = log_in(client).cookies[settings.SESSION_COOKIE_NAME]
     assert cookie["httponly"]
     assert cookie["samesite"] == "Lax"
-    assert settings.SESSION_COOKIE_SECURE == (not settings.DEBUG)
-    assert settings.CSRF_COOKIE_SECURE == (not settings.DEBUG)
+    # Django forces settings.DEBUG off in tests, so compare with the debug mode the settings were loaded with.
+    assert settings.SESSION_COOKIE_SECURE == (not config_settings.DEBUG)
+    assert settings.CSRF_COOKIE_SECURE == (not config_settings.DEBUG)
 
 
 def test_login_form_is_protected_against_csrf(user):
