@@ -160,13 +160,38 @@ def test_org_admin_cannot_access_other_organizations_members(client, org_admin):
 def test_cannot_deactivate_or_delete_last_admin_and_reviewer(client, org_admin):
     client.force_login(org_admin)
 
-    deactivate_response = client.post(reverse("deactivate_member", args=[org_admin.id]))
-    assert deactivate_response.status_code == 403
+    deactivate_response = client.post(
+        reverse("deactivate_member", args=[org_admin.id]),
+        follow=True,
+    )
 
-    delete_response = client.post(reverse("delete_member", args=[org_admin.id]))
-    assert delete_response.status_code == 403
+    assert deactivate_response.status_code == 200
+    assert any("last active Org Admin" in str(message) for message in deactivate_response.context["messages"])
+
+    delete_response = client.post(
+        reverse("delete_member", args=[org_admin.id]),
+        follow=True,
+    )
+
+    assert delete_response.status_code == 200
+    assert any("last active Org Admin" in str(message) for message in delete_response.context["messages"])
 
     org_admin.refresh_from_db()
     assert org_admin.is_active is True
     assert org_admin.is_org_admin is True
     assert org_admin.is_review_user is True
+
+
+@pytest.mark.django_db
+def test_member_actions_require_post(client, org_admin):
+    client.force_login(org_admin)
+
+    urls = [
+        reverse("deactivate_member", args=[org_admin.id]),
+        reverse("reactivate_member", args=[org_admin.id]),
+        reverse("delete_member", args=[org_admin.id]),
+    ]
+
+    for url in urls:
+        response = client.get(url)
+        assert response.status_code == 405

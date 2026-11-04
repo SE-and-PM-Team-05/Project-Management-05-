@@ -6,6 +6,11 @@
 
 <p>View the members of your organization.</p>
 
+{% if messages %}
+    {% for message in messages %}
+        <p>{{ message }}</p>
+    {% endfor %}
+{% endif %}
 <a href="{% url 'invite_member' %}">Invite a new member</a>
 
 <table>

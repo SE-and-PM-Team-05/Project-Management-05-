@@ -1,6 +1,7 @@
 import hashlib
 import secrets
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core import signing
 from django.core.mail import send_mail
@@ -9,6 +10,7 @@ from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from .forms import (
     AcceptInvitationForm,
@@ -20,13 +22,36 @@ from .forms import (
 from .models import Invitation, User
 from .verification import read_token, send_verification_email
 
+PROTECTED_ROLES = [
+    ("is_org_admin", "Org Admin"),
+    ("is_review_user", "Review User"),
+]
+
+
+def last_active_role(member, roles_removed):
+    """Return a protected role if removing it leaves no other active users."""
+    for role_field, role_name in PROTECTED_ROLES:
+        if member.is_active and role_field in roles_removed and getattr(member, role_field):
+            remaining = User.objects.filter(
+                organization=member.organization,
+                is_active=True,
+                **{role_field: True},
+            ).exclude(pk=member.pk)
+
+            if not remaining.exists():
+                return role_name
+
+    return None
+
 
 def register(request):
     form = RegistrationForm(request.POST or None)
+
     if request.method == "POST" and form.is_valid():
         user = form.save()
         send_verification_email(request, user)
         return redirect("register_done")
+
     return render(request, "accounts/register.html", {"form": form})
 
 
@@ -38,37 +63,69 @@ def verify_email(request, token):
     try:
         user_id = read_token(token)
     except signing.SignatureExpired:
-        return render(request, "accounts/verify_failed.html", {"expired": True}, status=400)
+        return render(
+            request,
+            "accounts/verify_failed.html",
+            {"expired": True},
+            status=400,
+        )
     except signing.BadSignature:
-        return render(request, "accounts/verify_failed.html", {"expired": False}, status=400)
+        return render(
+            request,
+            "accounts/verify_failed.html",
+            {"expired": False},
+            status=400,
+        )
 
-    user = User.objects.select_related("organization").filter(pk=user_id, organization__isnull=False).first()
+    user = (
+        User.objects.select_related("organization")
+        .filter(
+            pk=user_id,
+            organization__isnull=False,
+        )
+        .first()
+    )
+
     if user is None:
-        return render(request, "accounts/verify_failed.html", {"expired": False}, status=400)
+        return render(
+            request,
+            "accounts/verify_failed.html",
+            {"expired": False},
+            status=400,
+        )
+
     if not user.organization.is_verified:
         user.organization.is_verified = True
         user.organization.save(update_fields=["is_verified"])
+
         user.is_active = True
         user.save(update_fields=["is_active"])
+
     return render(request, "accounts/verify_done.html")
 
 
 def resend_verification(request):
     form = ResendVerificationForm(request.POST or None)
+
     if request.method == "POST" and form.is_valid():
         user = User.objects.filter(
-            email__iexact=form.cleaned_data["email"], organization__is_verified=False, is_org_admin=True
+            email__iexact=form.cleaned_data["email"],
+            organization__is_verified=False,
+            is_org_admin=True,
         ).first()
+
         if user:
             send_verification_email(request, user)
-        # Same answer whether or not the address is registered, so nobody can probe for accounts.
+
+        # Same response whether or not the email exists.
         return render(request, "accounts/resend_done.html")
+
     return render(request, "accounts/resend.html", {"form": form})
 
 
 @login_required
 def team_members(request):
-    if not request.user.is_org_admin:
+    if not request.user.is_org_admin or request.user.organization is None:
         return HttpResponseForbidden("Only Organization Admins can manage team members.")
 
     members = User.objects.filter(organization=request.user.organization).order_by("first_name", "last_name")
@@ -92,7 +149,10 @@ def invite_member(request):
         email = form.cleaned_data["email"].strip()
 
         if User.objects.filter(email__iexact=email).exists():
-            form.add_error("email", "A user with this email address already exists.")
+            form.add_error(
+                "email",
+                "This person can't be invited.",
+            )
 
         elif Invitation.objects.filter(
             organization=request.user.organization,
@@ -101,7 +161,10 @@ def invite_member(request):
             revoked_at__isnull=True,
             expires_at__gt=timezone.now(),
         ).exists():
-            form.add_error("email", "A pending invitation already exists for this email address.")
+            form.add_error(
+                "email",
+                "A pending invitation already exists for this email address.",
+            )
 
         else:
             token = secrets.token_urlsafe(32)
@@ -218,25 +281,16 @@ def edit_member(request, member_id):
     if request.method == "POST" and form.is_valid():
         data = form.cleaned_data
 
-        protected_roles = [
-            ("is_org_admin", "Org Admin"),
-            ("is_review_user", "Review User"),
-        ]
+        roles_removed = {role_field for role_field, _ in PROTECTED_ROLES if not data[role_field]}
 
-        for role_field, role_name in protected_roles:
-            if member.is_active and getattr(member, role_field) and not data[role_field]:
-                remaining = (
-                    User.objects.filter(
-                        organization=request.user.organization,
-                        is_active=True,
-                        **{role_field: True},
-                    )
-                    .exclude(pk=member.pk)
-                    .count()
-                )
+        role_name = last_active_role(member, roles_removed)
 
-                if remaining == 0:
-                    return HttpResponseForbidden(f"You cannot remove the last active {role_name}.")
+        if role_name:
+            messages.error(
+                request,
+                f"You cannot remove the last active {role_name}.",
+            )
+            return redirect("team_members")
 
         member.first_name = data["first_name"]
         member.last_name = data["last_name"]
@@ -256,13 +310,11 @@ def edit_member(request, member_id):
 
 
 @login_required
+@require_POST
 @transaction.atomic
 def deactivate_member(request, member_id):
     if not request.user.is_org_admin or request.user.organization is None:
         return HttpResponseForbidden("Only Organization Admins can deactivate team members.")
-
-    if request.method != "POST":
-        return HttpResponseForbidden("Deactivation requires a POST request.")
 
     member = get_object_or_404(
         User.objects.select_for_update(),
@@ -270,27 +322,18 @@ def deactivate_member(request, member_id):
         organization=request.user.organization,
     )
 
+    roles_removed = {role_field for role_field, _ in PROTECTED_ROLES}
+
+    role_name = last_active_role(member, roles_removed)
+
+    if role_name:
+        messages.error(
+            request,
+            f"You cannot deactivate the last active {role_name}.",
+        )
+        return redirect("team_members")
+
     if member.is_active:
-        protected_roles = [
-            ("is_org_admin", "Org Admin"),
-            ("is_review_user", "Review User"),
-        ]
-
-        for role_field, role_name in protected_roles:
-            if getattr(member, role_field):
-                remaining = (
-                    User.objects.filter(
-                        organization=request.user.organization,
-                        is_active=True,
-                        **{role_field: True},
-                    )
-                    .exclude(pk=member.pk)
-                    .count()
-                )
-
-                if remaining == 0:
-                    return HttpResponseForbidden(f"You cannot deactivate the last active {role_name}.")
-
         member.is_active = False
         member.save(update_fields=["is_active"])
 
@@ -298,13 +341,11 @@ def deactivate_member(request, member_id):
 
 
 @login_required
+@require_POST
 @transaction.atomic
 def reactivate_member(request, member_id):
     if not request.user.is_org_admin or request.user.organization is None:
         return HttpResponseForbidden("Only Organization Admins can reactivate team members.")
-
-    if request.method != "POST":
-        return HttpResponseForbidden("Reactivation requires a POST request.")
 
     member = get_object_or_404(
         User.objects.select_for_update(),
@@ -319,13 +360,11 @@ def reactivate_member(request, member_id):
 
 
 @login_required
+@require_POST
 @transaction.atomic
 def delete_member(request, member_id):
     if not request.user.is_org_admin or request.user.organization is None:
         return HttpResponseForbidden("Only Organization Admins can delete team members.")
-
-    if request.method != "POST":
-        return HttpResponseForbidden("Deletion requires a POST request.")
 
     member = get_object_or_404(
         User.objects.select_for_update(),
@@ -333,26 +372,16 @@ def delete_member(request, member_id):
         organization=request.user.organization,
     )
 
-    if member.is_active:
-        protected_roles = [
-            ("is_org_admin", "Org Admin"),
-            ("is_review_user", "Review User"),
-        ]
+    roles_removed = {role_field for role_field, _ in PROTECTED_ROLES}
 
-        for role_field, role_name in protected_roles:
-            if getattr(member, role_field):
-                remaining = (
-                    User.objects.filter(
-                        organization=request.user.organization,
-                        is_active=True,
-                        **{role_field: True},
-                    )
-                    .exclude(pk=member.pk)
-                    .count()
-                )
+    role_name = last_active_role(member, roles_removed)
 
-                if remaining == 0:
-                    return HttpResponseForbidden(f"You cannot delete the last active {role_name}.")
+    if role_name:
+        messages.error(
+            request,
+            f"You cannot delete the last active {role_name}.",
+        )
+        return redirect("team_members")
 
     member.delete()
 
