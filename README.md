@@ -14,7 +14,9 @@ The Django skeleton and CI are in place (**SCRUM-17**). Deployment is added once
 
 ## Run it locally
 
-You need Python 3.14, PostgreSQL and git. On Ubuntu:
+You need Python 3.14, PostgreSQL and git.
+
+### Ubuntu
 
 ```bash
 sudo apt install git python3-venv python3-pip postgresql
@@ -33,6 +35,50 @@ python manage.py migrate
 python manage.py createcachetable
 python manage.py create_superadmin you@example.com
 ```
+
+### Windows
+
+1. Install Python 3.14 and git in PowerShell:
+   ```powershell
+   winget install --id Python.Python.3.14 --exact
+   winget install --id Git.Git --exact
+   ```
+2. Install PostgreSQL 18 with the installer from https://www.postgresql.org/download/windows/ (winget's download is often refused by the installer's server). Choose a password for the `postgres` user and remember it; keep port 5432 and the other defaults; Stack Builder isn't needed.
+3. Create the database; it asks for the `postgres` password:
+   ```powershell
+   & "C:\Program Files\PostgreSQL\18\bin\createdb.exe" -U postgres bizpartnercheck
+   ```
+4. Allow PowerShell to run the virtual environment's activation script (once per Windows account):
+   ```powershell
+   Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+   ```
+
+One-time setup in the repository folder:
+
+```powershell
+py -3.14 -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt -r requirements-dev.txt
+Copy-Item .env.example .env
+```
+
+Open `.env` and change the `DATABASE_URL` line to use your `postgres` password (Windows PostgreSQL needs a password, unlike the Ubuntu setup):
+
+```
+DATABASE_URL=postgres://postgres:YOUR_PASSWORD@localhost:5432/bizpartnercheck
+```
+
+If the password contains `%`, `@`, `:`, `/` or `#`, write them as `%25`, `%40`, `%3A`, `%2F` and `%23`. Then:
+
+```powershell
+python manage.py migrate
+python manage.py createcachetable
+python manage.py create_superadmin you@example.com
+```
+
+In every new terminal, run `.venv\Scripts\Activate.ps1` in the repository folder first. The commands below work on both systems, except that Windows PowerShell 5 doesn't understand `&&`: run the CI checks there as `ruff check .; ruff format --check .; pytest`.
+
+### Both systems
 
 `createcachetable` creates the table Django's cache lives in; the failed-login counter needs it. Run it once per database, including on the server when deployment is set up (SCRUM-42).
 
