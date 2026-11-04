@@ -165,7 +165,7 @@ A push to `main` deploys only after CI is green: the `deploy` job in `.github/wo
    | `DJANGO_ALLOWED_HOSTS` | Only needed for an own domain; Render's `onrender.com` address is added automatically from `RENDER_EXTERNAL_HOSTNAME` |
    | `DATABASE_URL` | The Neon connection string from step 1 |
    | `EMAIL_HOST` | `smtp-relay.brevo.com` |
-   | `EMAIL_PORT` | `587` |
+   | `EMAIL_PORT` | `2525` (Render's free plan blocks outgoing traffic on 587; with 587 registration hangs and fails with a 500) |
    | `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` | The Brevo SMTP login and SMTP key from step 2 |
    | `DEFAULT_FROM_EMAIL` | The verified sender, e.g. `BizPartnerCheck <noreply@your-domain>` |
 
