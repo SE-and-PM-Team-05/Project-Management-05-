@@ -16,7 +16,11 @@ from .results import NOT_APPLICABLE, format_utc
 
 
 class ImmutableModel(models.Model):
-    """Can be created and deleted, but never changed after it was saved (REQ-FUNC-051)."""
+    """Can be created and deleted, but never changed after it was saved (REQ-FUNC-051).
+
+    Only save() is guarded. QuerySet.update() and bulk_update() bypass it and would change stored
+    evidence, so never use them on these models.
+    """
 
     class Meta:
         abstract = True
