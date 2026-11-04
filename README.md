@@ -12,6 +12,8 @@ BizPartnerCheck is a multi-tenant web service that automates the due-diligence c
 
 The Django skeleton and CI are in place (**SCRUM-17**). Deployment is added once **SCRUM-42** chooses the host and database provider; until then the `deploy` job in CI is a placeholder.
 
+Organizations can register (**SCRUM-21**), and `POST /api/v1/checks` checks a VAT number and company name against VIES (**SCRUM-24**, see [API](#api)).
+
 ## Run it locally
 
 You need Python 3.14, PostgreSQL and git. On Ubuntu:
@@ -80,6 +82,77 @@ pip install -r requirements.txt -r requirements-dev.txt
 Every push to `main` and every pull request runs `.github/workflows/ci.yml` against PostgreSQL 18: ruff, formatting, missing migrations, Django's deployment checks and pytest. Only a green build on `main` reaches the `deploy` job.
 
 Reviews before merging are enforced by a branch protection rule on `main` (Settings → Branches): require a pull request with 1 approval and the `test` status check.
+
+## API
+
+All endpoints live under `/api/v1/` and answer in JSON. Times are UTC in ISO 8601.
+
+### `POST /api/v1/checks` – check a business partner
+
+Runs the checks implemented so far, `vatValid` and `nameMatchesVat`, both answered by one call to VIES (REQ-FUNC-030…032). The other checks (fake-company list, HFU, Firmenbuch, GISA) are added in later sprints and are not in the response yet. Every accepted request is **stored** as evidence, atomically with all its results (REQ-REL-004); `requestId` is its ID. Stored requests cannot be changed, only deleted as a whole (REQ-FUNC-051). Invalid or rejected calls store nothing.
+
+**Authentication (for now):** a logged-in web session of a user with the Request User role, plus the CSRF token in the `X-CSRFToken` header. API tokens follow with SCRUM-48 (REQ-FUNC-020).
+
+Request body:
+
+| Field | Required | Example | Notes |
+|---|---|---|---|
+| `vatNumber` | yes | `"ATU 123 456 78"` | Any EU VAT number with its country prefix (Greece: `EL`). Spaces, dots and dashes are removed, letters upper-cased, then the format is checked per country (`accounts/validators.py`). |
+| `companyName` | yes | `"Muster Bau GmbH"` | Compared with the name registered in VIES. |
+| `companyRegisterNumber` | no | `"123456a"` | Austrian FN: up to 6 digits and a check letter. |
+| `address`, `reference` | no | `"PO-4711"` | Free text; `reference` is your own reference and is echoed back. |
+| `requiredLicenseCodes` | no | `["…"]` | List of strings; used once the GISA check exists. |
+
+Response (shortened):
+
+```json
+{
+  "requestId": "c1f0a7e2-5d1b-4b7e-9a10-3e2f6b8d9c41",
+  "receivedAt": "2026-11-02T09:42:09Z",
+  "completedAt": "2026-11-02T09:42:10Z",
+  "organization": "Beispiel Bau GmbH",
+  "requestedBy": { "user": "Anna Beispiel", "channel": "api", "tokenName": null },
+  "partner": { "companyName": "Muster Bau GmbH", "vatNumber": "ATU12345678" },
+  "checks": [
+    { "check": "vatValid", "result": "TRUE", "source": "VIES", "dataTimestamp": "2026-11-02T09:42:09Z",
+      "details": { "registeredAddress": "HAUPTSTRASSE 1, 3500 KREMS" } },
+    { "check": "nameMatchesVat", "result": "TRUE", "source": "VIES", "dataTimestamp": "2026-11-02T09:42:09Z",
+      "details": { "registeredName": "MUSTER BAU GMBH" } }
+  ],
+  "disclaimer": "Informational only; …"
+}
+```
+
+Each `result` is `TRUE`, `FALSE`, `UNKNOWN` (with `reason`: `SOURCE_UNAVAILABLE` or `NO_DETAILS_FOUND`) or `NOT_APPLICABLE`. `UNKNOWN` is never a pass or a fail. If VIES is down, the call still returns **200** with both checks `UNKNOWN / SOURCE_UNAVAILABLE`; VIES gets at most 8 s including one retry.
+
+Errors return `{"error": {"code": "…", "message": "…", "fields": {…}}}`:
+
+| Status | `code` | When |
+|---|---|---|
+| 400 | `INVALID_INPUT` | Missing or malformed field; `fields` names each one. VIES is not called. |
+| 400 | `INVALID_JSON` | Body is not JSON. |
+| 401 | `NOT_AUTHENTICATED` | Not logged in. |
+| 403 | `PERMISSION_DENIED` | User lacks the Request User role. |
+| 403 | `CSRF_FAILED` | Session call without `X-CSRFToken` header. |
+| 405 | `METHOD_NOT_ALLOWED` | Anything other than POST. |
+| 500 | `INTERNAL_ERROR` | Unexpected error on our side, e.g. the request could not be stored; nothing is stored then. Details only in the server log. |
+
+**Try it locally:** log in at http://localhost:8000/login/ with a Request User, open the browser console on that page and run:
+
+```js
+fetch("/api/v1/checks", {
+  method: "POST",
+  headers: { "Content-Type": "application/json",
+             "X-CSRFToken": document.cookie.match(/csrftoken=([^;]+)/)[1] },
+  body: JSON.stringify({ vatNumber: "ATU 123 456 78", companyName: "Muster Bau GmbH" }),
+}).then(r => r.json()).then(console.log);
+```
+
+This calls the real VIES service. The tests never do; they mock VIES. How VIES is used is documented in [docs/sources/vies.md](docs/sources/vies.md).
+
+### Adding a data source
+
+Each source is one adapter in `checks/sources/` that subclasses `SourceAdapter` (`checks/sources/base.py`) and is listed in `checks/sources/__init__.py` (REQ-MAINT-003). The runner (`checks/runner.py`) calls all adapters in parallel with an 8 s budget. Adapters do not import Django, so they can be tried out in a plain Python shell.
 
 ## Tech stack
 
