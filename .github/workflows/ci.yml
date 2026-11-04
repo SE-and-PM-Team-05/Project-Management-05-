@@ -36,10 +36,19 @@ jobs:
       - run: pytest
 
   deploy:
-    # Only green builds on main deploy (REQ-BUILD-001). The host is chosen in
-    # SCRUM-42; replace this step with the host's deploy hook then.
+    # Only green builds on main deploy (REQ-BUILD-001): this job calls Render's deploy hook,
+    # and auto-deploy is switched off in Render. See "Deployment" in README.md.
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Deployment is added once SCRUM-42 decides the host."
+      - name: Trigger Render deploy
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::warning::RENDER_DEPLOY_HOOK_URL secret is not set; skipping deploy."
+            exit 0
+          fi
+          curl --fail --silent --show-error -X POST "$RENDER_DEPLOY_HOOK_URL" > /dev/null
+          echo "Render deploy triggered."

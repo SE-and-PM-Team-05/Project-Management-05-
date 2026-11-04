@@ -3,11 +3,11 @@
 Practical Projects 2026/27 (Project Management and Software Engineering). A 5-person student team builds BizPartnerCheck, a multi-tenant web service that automates due-diligence checks on business partners for Austrian construction companies, using Scrum.
 
 ## Key facts
-- Requirements baseline: `SRS Document Combined.md` / `.docx` (v2.0, the merged team version). Older individual drafts are in this folder too.
+- Requirements baseline: `docs/SRS.md` (v2.4, the merged team version); this repository copy is the one to read and update, with every change in its Revision History (REQ-CM-001).
 - Backlog: Jira project key **SCRUM**; import file `BizPartnerCheck_Jira_Backlog.csv` (7 epics, 20 user stories, 6 tasks). CSV `S<n>` = `SCRUM-<16+n>`, epics `E1–E7` = `SCRUM-10–16`.
 - Sprints (2 weeks): Sprint 1 22.10.–05.11. · Sprint 2 05.11.–19.11. · Sprint 3 19.11.–03.12. · Sprint 4 03.12.–17.12. (MVP demo) · Sprint 5 17.12.–14.01. (holidays, final presentation).
 - Capacity: 6–10 h per person per week. Releases: R1 = workflow (Sprints 1–3), R2 = completion (Sprint 4), R3 = risk checks (stretch).
-- Stack (decided 2026-10-22, SRS v2.1 C3): Python + Django (templates, built-in auth, admin, i18n, ORM), PostgreSQL, `requests` + `feedparser`, pytest + ruff, GitHub + GitHub Actions (CI and daily sync trigger), one managed host in the EU (Render or Railway, still open). Keep it minimal: the team is 3rd-semester; add a library only when a requirement needs it. No Next.js, Vercel-specific features, HTMX, Django Ninja, allauth or Sentry unless the team decides otherwise.
+- Stack (decided 2026-10-22, SRS v2.1 C3): Python + Django (templates, built-in auth, admin, i18n, ORM), PostgreSQL, `requests` + `feedparser`, pytest + ruff, GitHub + GitHub Actions (CI and daily sync trigger), hosted on Render (Frankfurt) with the database on Neon (EU) and email via Brevo SMTP (decided 2026-11-04, SRS v2.3 C3). Keep it minimal: the team is 3rd-semester; add a library only when a requirement needs it. No Next.js, Vercel-specific features, HTMX, Django Ninja, allauth or Sentry unless the team decides otherwise.
 
 ## Commits and pull requests
 - Follow the Jira-key rules for branches, commits and pull requests in the README.
