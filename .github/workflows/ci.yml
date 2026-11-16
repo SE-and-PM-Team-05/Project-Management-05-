@@ -21,6 +21,7 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/bizpartnercheck
       DJANGO_SECRET_KEY: ci-only-not-a-secret-just-long-enough-for-django-deploy-checks-0123456789
       DJANGO_ALLOWED_HOSTS: localhost
+      KEYCLOAK_CLIENT_SECRET: ci-only-not-a-secret
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

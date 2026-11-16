@@ -28,7 +28,9 @@ class Organization(models.Model):
     name = models.CharField(max_length=200)
     address = models.TextField()
     vat_number = models.CharField("VAT number", max_length=14)
-    is_verified = models.BooleanField(default=False, help_text="Set when the registration email link is opened.")
+    is_verified = models.BooleanField(
+        default=False, help_text="Set when the organization is registered by a user whose email Keycloak has verified."
+    )
     terms_accepted_at = models.DateTimeField()
     created_at = models.DateTimeField(auto_now_add=True)
 

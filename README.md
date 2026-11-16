@@ -98,9 +98,25 @@ Before you push, run the same checks as CI:
 ruff check . && ruff format --check . && pytest
 ```
 
-Emails (verification links, password resets) are printed in the `runserver` terminal unless `EMAIL_HOST` is set.
+Emails sent by the app (invitations) are printed in the `runserver` terminal unless `EMAIL_HOST` is set.
 
-Login rules (SCRUM-22): after 5 failed logins an account is locked for 15 minutes, and a session ends after 8 hours without activity. "Forgot your password?" on the login page sends a reset link by email.
+Login: users log in through Keycloak (see [Keycloak](#keycloak) below), so you need a Keycloak running to log in as anyone but the Super Admin. The Super Admin logs in with a password at `/admin/`, which is locked for 15 minutes after 5 failed attempts. A session ends after 8 hours without activity.
+
+### Keycloak
+
+Keycloak owns user accounts: sign-up, passwords, email verification, password reset and lockout. The app talks to it through OpenID Connect (`mozilla-django-oidc`) and creates its own user record, matched by email address, on the first login. A new user then registers an organization or opens an invitation link. Only accounts whose email Keycloak has verified can log in; staff accounts (the Super Admin) can't log in through Keycloak, only at `/admin/`.
+
+The realm is set up from [`keycloak/bizpartnercheck-realm.json`](keycloak/bizpartnercheck-realm.json) on Keycloak's first start: user registration with email verification, password reset, a minimum password length of 8, lockout for 15 minutes after 5 failed logins (REQ-SEC-004), and the `bizpartnercheck` client. The file reads two environment variables, which must be set before the first start: `APP_URL` (the app's address without a trailing slash) and `KEYCLOAK_CLIENT_SECRET` (the same value as in the app's `.env`). Once the realm exists, Keycloak skips the import, so later changes are made in its admin console.
+
+Run Keycloak locally in development mode, with Docker (in this folder; in PowerShell replace `$(pwd)` with `${PWD}`):
+
+```bash
+docker run -p 8080:8080 -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin -e APP_URL=http://localhost:8000 -e KEYCLOAK_CLIENT_SECRET=local-dev-secret -v "$(pwd)/keycloak:/opt/keycloak/data/import" quay.io/keycloak/keycloak:26.4 start-dev --import-realm
+```
+
+or without Docker: install Java 21, download and unpack the Keycloak 26.4 zip from https://www.keycloak.org/downloads, copy `keycloak/bizpartnercheck-realm.json` into its `data/import` folder, set the same four environment variables and run `bin/kc.sh start-dev --import-realm` (`bin\kc.bat` on Windows).
+
+Then put `KEYCLOAK_CLIENT_SECRET=local-dev-secret` in your `.env`. Locally there's no email server, so Keycloak can't send verification emails: create test users at http://localhost:8080/admin/ (log in as `admin` / `admin`, switch to the `bizpartnercheck` realm, Users → Add user, switch on *Email verified*, then set a password on the Credentials tab).
 
 ### Environment variables
 
@@ -117,6 +133,9 @@ Login rules (SCRUM-22): after 5 failed logins an account is locked for 15 minute
 | `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` | with `EMAIL_HOST` | – | SMTP login. |
 | `DEFAULT_FROM_EMAIL` | no | `BizPartnerCheck <noreply@localhost>` | Sender of outgoing emails. |
 | `DJANGO_LOG_LEVEL` | no | `INFO` | Log level. |
+| `KEYCLOAK_REALM_URL` | no | `http://localhost:8080/realms/bizpartnercheck` | The Keycloak realm users log in through. |
+| `KEYCLOAK_CLIENT_ID` | no | `bizpartnercheck` | Client ID of the app in that realm. |
+| `KEYCLOAK_CLIENT_SECRET` | when debug is off | – | Secret of the `bizpartnercheck` client; the same value Keycloak got as `KEYCLOAK_CLIENT_SECRET` when it imported the realm. |
 
 ### Dependencies
 
@@ -168,11 +187,43 @@ A push to `main` deploys only after CI is green: the `deploy` job in `.github/wo
    | `EMAIL_PORT` | `2525` (Render's free plan blocks outgoing traffic on 587; with 587 registration hangs and fails with a 500) |
    | `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` | The Brevo SMTP login and SMTP key from step 2 |
    | `DEFAULT_FROM_EMAIL` | The verified sender, e.g. `BizPartnerCheck <noreply@your-domain>` |
+   | `KEYCLOAK_REALM_URL` | `https://<your-keycloak-service>.onrender.com/realms/bizpartnercheck` (step 7) |
+   | `KEYCLOAK_CLIENT_SECRET` | The same random string as in the Keycloak service (step 7). Without it the app refuses to start. |
 
    Render reads the Python version from `.python-version`; if the build log shows a different version, also set `PYTHON_VERSION` to the full 3.14 version.
 4. **Deploy hook:** Render → the service → Settings → Deploy Hook → copy the URL. In GitHub: repository Settings → Secrets and variables → Actions → New repository secret named `RENDER_DEPLOY_HOOK_URL` with that URL. Without it the `deploy` job only prints a warning.
 5. **First deploy:** Render → Manual Deploy → Deploy latest commit (later deploys happen automatically after green CI on `main`). Then open `https://<your-service>.onrender.com/healthz`; it should answer `ok`.
 6. **Super Admin:** the free plan has no shell on the server, so create the Super Admin from your own machine against the Neon database. In a terminal in this folder with `.venv` active, set `DATABASE_URL` to the Neon connection string for that terminal only, run `python manage.py create_superadmin you@example.com`, and log in at `https://<your-service>.onrender.com/admin/` with the one-time password it prints.
+7. **Keycloak** (SCRUM-76): a second Render web service built from `keycloak/Dockerfile`, with its own database in the same Neon project.
+   1. **Neon:** in the project from step 1, create a database named `keycloak` (Databases → New database). Use the **direct** connection (not `-pooler`): Keycloak keeps its own connection pool and doesn't work behind Neon's PgBouncer. Take host, user and password from the direct connection string.
+   2. **Client secret:** create one random string, e.g. with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. It goes into both services as `KEYCLOAK_CLIENT_SECRET`.
+   3. **Render:** New → Web Service → this repository, then:
+
+      | Setting | Value |
+      |---|---|
+      | Name | e.g. `bizpartnercheck-auth`; the address becomes `https://<name>.onrender.com` |
+      | Language | Docker |
+      | Branch | `main` |
+      | Root Directory | `keycloak` |
+      | Region | Frankfurt (EU Central) |
+      | Health Check Path | `/realms/bizpartnercheck` |
+      | Auto-Deploy | Off: Keycloak only needs a deploy when its files change; use Manual Deploy then |
+
+      Environment variables:
+
+      | Variable | Value |
+      |---|---|
+      | `PORT` | `8080` (the port Keycloak listens on) |
+      | `KC_HOSTNAME` | `https://<name>.onrender.com` |
+      | `KC_DB_URL` | `jdbc:postgresql://<direct Neon host>/keycloak?sslmode=require` |
+      | `KC_DB_USERNAME` / `KC_DB_PASSWORD` | User and password from the Neon connection string |
+      | `KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD` | A temporary admin login for the first start; replace it with a permanent admin in the admin console afterwards and remove these two variables |
+      | `APP_URL` | `https://<your-service>.onrender.com` (the app from step 3, no trailing slash) |
+      | `KEYCLOAK_CLIENT_SECRET` | The string from step 7.2 |
+
+      **Instance type:** Keycloak is a Java server and needs more memory than the app. Render's free instance has 512 MB and sleeps when idle, which makes Keycloak slow to start or fail to start; if the free instance doesn't stay up, use a paid instance with more memory (team decision, SRS OD-10).
+   4. **Deploy**, then open `https://<name>.onrender.com/admin/`, log in with the bootstrap admin and switch to the `bizpartnercheck` realm. Under **Realm settings → Email**, enter the Brevo SMTP settings from step 2 (host `smtp-relay.brevo.com`, port `2525`, StartTLS on, the SMTP login and key, and the verified sender as *From*), so Keycloak can send verification and password reset emails.
+   5. **App:** in the app service from step 3, set `KEYCLOAK_REALM_URL` and `KEYCLOAK_CLIENT_SECRET` (table above) and deploy it. Test it: open the app, click Register, sign up, open the verification email, and register an organization.
 
 ## API
 
@@ -228,7 +279,7 @@ Errors return `{"error": {"code": "…", "message": "…", "fields": {…}}}`:
 | 405 | `METHOD_NOT_ALLOWED` | Anything other than POST. |
 | 500 | `INTERNAL_ERROR` | Unexpected error on our side, e.g. the request could not be stored; nothing is stored then. Details only in the server log. |
 
-**Try it locally:** log in at http://localhost:8000/login/ with a Request User, open the browser console on that page and run:
+**Try it locally:** log in at http://localhost:8000/ (through Keycloak) with a Request User, open the browser console on that page and run:
 
 ```js
 fetch("/api/v1/checks", {
@@ -247,7 +298,7 @@ Each source is one adapter in `checks/sources/` that subclasses `SourceAdapter` 
 
 ## Tech stack
 
-Python + Django (templates, built-in authentication, admin, translations, ORM), PostgreSQL, `requests` + `feedparser` for the data sources, pytest + ruff, GitHub Actions for CI, deployment and the daily sync trigger. Hosting: Render (app, Frankfurt), Neon (PostgreSQL, EU), Brevo (SMTP email).
+Python + Django (templates, admin, translations, ORM), Keycloak for user login (OpenID Connect via `mozilla-django-oidc`), PostgreSQL, `requests` + `feedparser` for the data sources, pytest + ruff, GitHub Actions for CI, deployment and the daily sync trigger. Hosting: Render (app, Frankfurt), Neon (PostgreSQL, EU), Brevo (SMTP email).
 
 Keep it minimal: add a library only when a requirement needs it, and agree on it in the team first.
 
