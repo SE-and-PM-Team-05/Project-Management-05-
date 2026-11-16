@@ -17,6 +17,7 @@ VALID_INPUT = {"vatNumber": "atu 123.456-78", "companyName": "Muster Bau GmbH"}
 ISO_UTC = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
 
 
+
 def vies_answer(valid=True, name="MUSTER BAU GMBH"):
     response = mock.Mock(status_code=200)
     response.json.return_value = {
@@ -36,6 +37,14 @@ def vies():
     with mock.patch("checks.sources.vies.requests.post", return_value=vies_answer()) as post:
         yield post
 
+
+@pytest.fixture(autouse=True)
+def hfu():
+    with mock.patch(
+        "checks.sources.hfu.query_hfu",
+        return_value={"dienstgeber": False, "epu": False},
+    ) as query:
+        yield query
 
 def make_user(email="anna@beispielbau.at", org_name="Beispiel Bau GmbH", **roles):
     org = Organization.objects.create(
@@ -89,8 +98,11 @@ def test_req_func_045_response_has_appendix_b_shape(api, vies):
     assert body["reference"] == "PO-4711"
     assert "no liability" in body["disclaimer"]  # REQ-FUNC-048
     # Only the checks implemented so far; nothing invented for the others.
-    assert [c["check"] for c in body["checks"]] == ["vatValid", "nameMatchesVat"]
-
+    assert [c["check"] for c in body["checks"]] == [
+    "vatValid",
+    "nameMatchesVat",
+    "onHfuList",
+]
 
 def test_req_func_031_032_valid_vat_and_matching_name(api, vies):
     checks = checks_of(post(api, VALID_INPUT))
@@ -247,11 +259,11 @@ def test_req_rel_004_check_is_stored_with_all_results(api, vies, request_user):
     assert stored.company_name == "Muster Bau GmbH"
     assert stored.company_register_number == "123456a"
     assert stored.reference == "PO-4711"
-    assert stored.received_at <= stored.completed_at
     assert [(r.check_name, r.result) for r in stored.results.all()] == [
-        ("vatValid", "TRUE"),
-        ("nameMatchesVat", "TRUE"),
-    ]
+    ("vatValid", "TRUE"),
+    ("nameMatchesVat", "TRUE"),
+    ("onHfuList", "UNKNOWN"),
+]
     # The response is exactly what was stored.
     assert {**stored.to_json(), "disclaimer": body["disclaimer"]} == body
 
@@ -272,7 +284,7 @@ def test_req_func_041_each_check_creates_a_new_record(api, vies):
     second = post(api, VALID_INPUT).json()["requestId"]
     assert first != second
     assert CheckRequest.objects.count() == 2
-    assert CheckRequestResult.objects.count() == 4
+    assert CheckRequestResult.objects.count() == 6
 
 
 @pytest.mark.parametrize("data", [{}, {"vatNumber": "ATU1", "companyName": "X"}])

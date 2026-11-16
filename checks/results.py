@@ -27,6 +27,7 @@ class Partner:
     company_register_number: str = ""
     address: str = ""
     required_license_codes: tuple[str, ...] = ()
+    requesting_organization_vat_number: str = ""
 
     @property
     def country_code(self):
