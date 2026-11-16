@@ -4,17 +4,21 @@ Team 05 · Software Engineering and Project Management · IMC Krems · Practical
 
 BizPartnerCheck is a multi-tenant web service that automates the due-diligence checks an Austrian construction company must run before contracting a business partner (VAT number, fake-company list, HFU list, company register, business licenses) and stores every check as evidence.
 
-- **Requirements:** SRS v2.1 (combined team version), kept in the team folder; changes follow REQ-CM-001
+- **Requirements:** [SRS v2.4](docs/SRS.md) (combined team version); changes follow REQ-CM-001 and are recorded in its Revision History
 - **Backlog:** Jira project [SCRUM](https://sepmimc.atlassian.net/jira/software/projects/SCRUM/boards/1)
 - **AI agent instructions:** [AGENTS.md](AGENTS.md)
 
 ## Status
 
-The Django skeleton and CI are in place (**SCRUM-17**). Deployment is added once **SCRUM-42** chooses the host and database provider; until then the `deploy` job in CI is a placeholder.
+The Django skeleton and CI are in place (**SCRUM-17**). The app is deployed to **Render**, with the database on **Neon** and email through **Brevo** (decided in **SCRUM-42**); see [Deployment](#deployment) for the one-time setup.
+
+Organizations can register (**SCRUM-21**), and `POST /api/v1/checks` checks a VAT number and company name against VIES (**SCRUM-24**, see [API](#api)).
 
 ## Run it locally
 
-You need Python 3.14, PostgreSQL and git. On Ubuntu:
+You need Python 3.14, PostgreSQL and git.
+
+### Ubuntu
 
 ```bash
 sudo apt install git python3-venv python3-pip postgresql
@@ -30,8 +34,55 @@ source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env
 python manage.py migrate
+python manage.py createcachetable
 python manage.py create_superadmin you@example.com
 ```
+
+### Windows
+
+1. Install Python 3.14 and git in PowerShell:
+   ```powershell
+   winget install --id Python.Python.3.14 --exact
+   winget install --id Git.Git --exact
+   ```
+2. Install PostgreSQL 18 with the installer from https://www.postgresql.org/download/windows/ (winget's download is often refused by the installer's server). Choose a password for the `postgres` user and remember it; keep port 5432 and the other defaults; Stack Builder isn't needed.
+3. Create the database; it asks for the `postgres` password:
+   ```powershell
+   & "C:\Program Files\PostgreSQL\18\bin\createdb.exe" -U postgres bizpartnercheck
+   ```
+4. Allow PowerShell to run the virtual environment's activation script (once per Windows account):
+   ```powershell
+   Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+   ```
+
+One-time setup in the repository folder:
+
+```powershell
+py -3.14 -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt -r requirements-dev.txt
+Copy-Item .env.example .env
+```
+
+Open `.env` and change the `DATABASE_URL` line to use your `postgres` password (Windows PostgreSQL needs a password, unlike the Ubuntu setup):
+
+```
+DATABASE_URL=postgres://postgres:YOUR_PASSWORD@localhost:5432/bizpartnercheck
+```
+
+If the password contains `%`, `@`, `:`, `/` or `#`, write them as `%25`, `%40`, `%3A`, `%2F` and `%23`. Then:
+
+```powershell
+python manage.py migrate
+python manage.py createcachetable
+python manage.py create_superadmin you@example.com
+```
+
+In every new terminal, run `.venv\Scripts\Activate.ps1` in the repository folder first. The commands below work on both systems, except that Windows PowerShell 5 doesn't understand `&&`: run the CI checks there as `ruff check .; ruff format --check .; pytest`.
+
+### Both systems
+
+`createcachetable` creates the table Django's cache lives in; the failed-login counter needs it. Run it once per database; on Render, `build.sh` does it on every deploy.
 
 `create_superadmin` prints a one-time password. Log in at http://localhost:8000/admin/ and choose a new one. The command refuses to run if a Super Admin already exists.
 
@@ -49,6 +100,8 @@ ruff check . && ruff format --check . && pytest
 
 Emails (verification links, password resets) are printed in the `runserver` terminal unless `EMAIL_HOST` is set.
 
+Login rules (SCRUM-22): after 5 failed logins an account is locked for 15 minutes, and a session ends after 8 hours without activity. "Forgot your password?" on the login page sends a reset link by email.
+
 ### Environment variables
 
 `settings.py` reads a local `.env` file if it exists; real environment variables take precedence. On the host, set them in its secret settings.
@@ -58,7 +111,7 @@ Emails (verification links, password resets) are printed in the `runserver` term
 | `DJANGO_DEBUG` | no | `false` | `true` only on your own machine. Off means HTTPS only, HSTS and secure cookies. |
 | `DJANGO_SECRET_KEY` | when debug is off | dev key | Long random string; different per environment. |
 | `DJANGO_ALLOWED_HOSTS` | when debug is off | – | Comma-separated domain names, e.g. `bizpartnercheck.example.com`. |
-| `DATABASE_URL` | no | `postgres:///bizpartnercheck` | `postgres://user:password@host:port/name`. |
+| `DATABASE_URL` | no | `postgres:///bizpartnercheck` | `postgres://user:password@host:port/name`; options such as Neon's `?sslmode=require` are passed to PostgreSQL. |
 | `EMAIL_HOST` | no | – | SMTP server; if empty, emails go to the console. |
 | `EMAIL_PORT` | no | `587` | SMTP port (STARTTLS). |
 | `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` | with `EMAIL_HOST` | – | SMTP login. |
@@ -77,13 +130,124 @@ pip install -r requirements.txt -r requirements-dev.txt
 
 ### CI
 
-Every push to `main` and every pull request runs `.github/workflows/ci.yml` against PostgreSQL 18: ruff, formatting, missing migrations, Django's deployment checks and pytest. Only a green build on `main` reaches the `deploy` job.
+Every push to `main` and every pull request runs `.github/workflows/ci.yml` against PostgreSQL 18: ruff, formatting, missing migrations, Django's deployment checks and pytest. Only a green build on `main` reaches the `deploy` job, which triggers a deploy on Render.
 
 Reviews before merging are enforced by a branch protection rule on `main` (Settings → Branches): require a pull request with 1 approval and the `test` status check.
 
+## Deployment
+
+Production runs on **Render** (app, Frankfurt), **Neon** (PostgreSQL, EU) and **Brevo** (SMTP email). The free tiers are enough for the course. Render's free web service sleeps when nobody uses it and takes a while to wake up, so open the site a minute before a demo.
+
+A push to `main` deploys only after CI is green: the `deploy` job in `.github/workflows/ci.yml` calls Render's deploy hook, and Render's own auto-deploy is switched off. On each deploy Render runs `build.sh` (install, `collectstatic`, `migrate`, `createcachetable`) and then starts gunicorn.
+
+### One-time setup
+
+1. **Neon:** create a project in an EU region (e.g. AWS Europe Central, Frankfurt) and copy its connection string. It looks like `postgresql://user:password@ep-….eu-central-1.aws.neon.tech/neondb?sslmode=require`. Both the pooled (`-pooler` in the host) and the direct connection string work: the settings check reused connections and switch off server-side cursors, which Neon's pooler doesn't support.
+2. **Brevo:** create an account, verify the sender address (best on a domain the team owns, with Brevo's SPF and DKIM records; mail "from" a Gmail address tends to land in spam) and create an **SMTP key** (Settings → SMTP & API). Note the SMTP login shown there.
+3. **Render:** New → Web Service → connect this GitHub repository (an organization owner must allow Render's GitHub app for `SE-and-PM-Team-05`), then:
+
+   | Setting | Value |
+   |---|---|
+   | Branch | `main` |
+   | Region | Frankfurt (EU Central) |
+   | Runtime | Python |
+   | Build Command | `bash build.sh` |
+   | Start Command | `gunicorn config.wsgi:application --bind 0.0.0.0:$PORT` |
+   | Instance Type | Free |
+   | Health Check Path | `/healthz` |
+   | Auto-Deploy | Off (CI triggers deploys) |
+
+   Environment variables (Render → Environment). Never commit these values:
+
+   | Variable | Value |
+   |---|---|
+   | `DJANGO_SECRET_KEY` | A new random string, e.g. from `python -c "import secrets; print(secrets.token_urlsafe(50))"` |
+   | `DJANGO_ALLOWED_HOSTS` | Only needed for an own domain; Render's `onrender.com` address is added automatically from `RENDER_EXTERNAL_HOSTNAME` |
+   | `DATABASE_URL` | The Neon connection string from step 1 |
+   | `EMAIL_HOST` | `smtp-relay.brevo.com` |
+   | `EMAIL_PORT` | `2525` (Render's free plan blocks outgoing traffic on 587; with 587 registration hangs and fails with a 500) |
+   | `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` | The Brevo SMTP login and SMTP key from step 2 |
+   | `DEFAULT_FROM_EMAIL` | The verified sender, e.g. `BizPartnerCheck <noreply@your-domain>` |
+
+   Render reads the Python version from `.python-version`; if the build log shows a different version, also set `PYTHON_VERSION` to the full 3.14 version.
+4. **Deploy hook:** Render → the service → Settings → Deploy Hook → copy the URL. In GitHub: repository Settings → Secrets and variables → Actions → New repository secret named `RENDER_DEPLOY_HOOK_URL` with that URL. Without it the `deploy` job only prints a warning.
+5. **First deploy:** Render → Manual Deploy → Deploy latest commit (later deploys happen automatically after green CI on `main`). Then open `https://<your-service>.onrender.com/healthz`; it should answer `ok`.
+6. **Super Admin:** the free plan has no shell on the server, so create the Super Admin from your own machine against the Neon database. In a terminal in this folder with `.venv` active, set `DATABASE_URL` to the Neon connection string for that terminal only, run `python manage.py create_superadmin you@example.com`, and log in at `https://<your-service>.onrender.com/admin/` with the one-time password it prints.
+
+## API
+
+All endpoints live under `/api/v1/` and answer in JSON. Times are UTC in ISO 8601.
+
+### `POST /api/v1/checks` – check a business partner
+
+Runs the checks implemented so far, `vatValid` and `nameMatchesVat`, both answered by one call to VIES (REQ-FUNC-030…032). The other checks (fake-company list, HFU, Firmenbuch, GISA) are added in later sprints and are not in the response yet. Every accepted request is **stored** as evidence, atomically with all its results (REQ-REL-004); `requestId` is its ID. Stored requests cannot be changed, only deleted as a whole (REQ-FUNC-051). Invalid or rejected calls store nothing.
+
+**Authentication (for now):** a logged-in web session of a user with the Request User role, plus the CSRF token in the `X-CSRFToken` header. API tokens follow with SCRUM-48 (REQ-FUNC-020).
+
+Request body:
+
+| Field | Required | Example | Notes |
+|---|---|---|---|
+| `vatNumber` | yes | `"ATU 123 456 78"` | Any EU VAT number with its country prefix (Greece: `EL`). Spaces, dots and dashes are removed, letters upper-cased, then the format is checked per country (`accounts/validators.py`). |
+| `companyName` | yes | `"Muster Bau GmbH"` | Compared with the name registered in VIES. |
+| `companyRegisterNumber` | no | `"123456a"` | Austrian FN: up to 6 digits and a check letter. |
+| `address`, `reference` | no | `"PO-4711"` | Free text; `reference` is your own reference and is echoed back. |
+| `requiredLicenseCodes` | no | `["…"]` | List of strings; used once the GISA check exists. |
+
+Response (shortened):
+
+```json
+{
+  "requestId": "c1f0a7e2-5d1b-4b7e-9a10-3e2f6b8d9c41",
+  "receivedAt": "2026-11-02T09:42:09Z",
+  "completedAt": "2026-11-02T09:42:10Z",
+  "organization": "Beispiel Bau GmbH",
+  "requestedBy": { "user": "Anna Beispiel", "channel": "api", "tokenName": null },
+  "partner": { "companyName": "Muster Bau GmbH", "vatNumber": "ATU12345678" },
+  "checks": [
+    { "check": "vatValid", "result": "TRUE", "source": "VIES", "dataTimestamp": "2026-11-02T09:42:09Z",
+      "details": { "registeredAddress": "HAUPTSTRASSE 1, 3500 KREMS" } },
+    { "check": "nameMatchesVat", "result": "TRUE", "source": "VIES", "dataTimestamp": "2026-11-02T09:42:09Z",
+      "details": { "registeredName": "MUSTER BAU GMBH" } }
+  ],
+  "disclaimer": "Informational only; …"
+}
+```
+
+Each `result` is `TRUE`, `FALSE`, `UNKNOWN` (with `reason`: `SOURCE_UNAVAILABLE` or `NO_DETAILS_FOUND`) or `NOT_APPLICABLE`. `UNKNOWN` is never a pass or a fail. If VIES is down, the call still returns **200** with both checks `UNKNOWN / SOURCE_UNAVAILABLE`; VIES gets at most 8 s including one retry.
+
+Errors return `{"error": {"code": "…", "message": "…", "fields": {…}}}`:
+
+| Status | `code` | When |
+|---|---|---|
+| 400 | `INVALID_INPUT` | Missing or malformed field; `fields` names each one. VIES is not called. |
+| 400 | `INVALID_JSON` | Body is not JSON. |
+| 401 | `NOT_AUTHENTICATED` | Not logged in. |
+| 403 | `PERMISSION_DENIED` | User lacks the Request User role. |
+| 403 | `CSRF_FAILED` | Session call without `X-CSRFToken` header. |
+| 405 | `METHOD_NOT_ALLOWED` | Anything other than POST. |
+| 500 | `INTERNAL_ERROR` | Unexpected error on our side, e.g. the request could not be stored; nothing is stored then. Details only in the server log. |
+
+**Try it locally:** log in at http://localhost:8000/login/ with a Request User, open the browser console on that page and run:
+
+```js
+fetch("/api/v1/checks", {
+  method: "POST",
+  headers: { "Content-Type": "application/json",
+             "X-CSRFToken": document.cookie.match(/csrftoken=([^;]+)/)[1] },
+  body: JSON.stringify({ vatNumber: "ATU 123 456 78", companyName: "Muster Bau GmbH" }),
+}).then(r => r.json()).then(console.log);
+```
+
+This calls the real VIES service. The tests never do; they mock VIES. How VIES is used is documented in [docs/sources/vies.md](docs/sources/vies.md).
+
+### Adding a data source
+
+Each source is one adapter in `checks/sources/` that subclasses `SourceAdapter` (`checks/sources/base.py`) and is listed in `checks/sources/__init__.py` (REQ-MAINT-003). The runner (`checks/runner.py`) calls all adapters in parallel with an 8 s budget. Adapters do not import Django, so they can be tried out in a plain Python shell.
+
 ## Tech stack
 
-Python + Django (templates, built-in authentication, admin, translations, ORM), PostgreSQL, `requests` + `feedparser` for the data sources, pytest + ruff, GitHub Actions for CI and the daily sync trigger, one managed host in the EU.
+Python + Django (templates, built-in authentication, admin, translations, ORM), PostgreSQL, `requests` + `feedparser` for the data sources, pytest + ruff, GitHub Actions for CI, deployment and the daily sync trigger. Hosting: Render (app, Frankfurt), Neon (PostgreSQL, EU), Brevo (SMTP email).
 
 Keep it minimal: add a library only when a requirement needs it, and agree on it in the team first.
 
