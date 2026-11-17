@@ -14,8 +14,13 @@ Integration note required by REQ-INT-016. Code: `checks/sources/vies.py`, name r
 ## Request
 
 ```json
-{ "countryCode": "AT", "vatNumber": "U12345678" }
+{ "countryCode": "AT", "vatNumber": "U12345678", "requesterMemberStateCode": "AT", "requesterNumber": "U99999999" }
 ```
+
+The requester is the checking organization's own VAT number (verified at registration). With it, VIES
+returns a `requestIdentifier`, its consultation number, which is stored as evidence (REQ-FUNC-050, SCRUM-61).
+If VIES rejects the requester (`INVALID_REQUESTER_INFO`), BizPartnerCheck asks once more without it, within
+the same 8 s budget, so the check still runs; the result then has no `requestIdentifier`.
 
 VIES wants the country code and the rest of the number separately. BizPartnerCheck normalizes the input
 first (`atu 123 456 78` → `ATU12345678`) and splits after the second character.
@@ -27,7 +32,7 @@ first (`atu 123 456 78` → `ATU12345678`) and splits after the second character
 | `valid` (boolean; `isValid` is accepted too) | `vatValid` TRUE / FALSE |
 | `name` | `nameMatchesVat`; reported as `details.registeredName` |
 | `address` | Reported as `vatValid.details.registeredAddress` |
-| `requestIdentifier` | Reported as `vatValid.details.requestIdentifier` when not empty (only filled if a requester VAT number is sent, which we don't do yet) |
+| `requestIdentifier` | Reported and stored as `vatValid.details.requestIdentifier` when not empty (VIES fills it only when a requester VAT number is sent) |
 | `actionSucceed`, `errorWrappers[].error`, `userError` | Error detection (see below) |
 
 Some member states (e.g. Germany) never share name or address; VIES then sends `---` or nothing.
@@ -69,5 +74,5 @@ disclaimer (REQ-FUNC-048) covers this. There is no published rate limit, but VIE
   be downloaded while writing this. Check it once and adjust this note if anything differs
   (REQ-POC-001 live demo).
 - `TODO(SRS):` Terms-of-use review per REQ-COMP-004 still has to be recorded by the team.
-- Sending our own VAT number as requester would give a `requestIdentifier` (consultation number) as extra
-  evidence (REQ-FUNC-050 mentions "VIES request ID"). Needs a decision on which VAT number to send.
+- `TODO(team):` SCRUM-61 sends the checking organization's own VAT number as requester. Confirm in the team
+  that this is the number to send (the alternative would be the operator's VAT number).

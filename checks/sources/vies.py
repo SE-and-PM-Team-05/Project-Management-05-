@@ -3,10 +3,14 @@
 Uses the European Commission's VIES REST API; see docs/sources/vies.md for fields and error cases.
 """
 
+import logging
+
 from ..names import names_match
 from ..results import FALSE, NO_DETAILS_FOUND, TRUE
 from .base import SourceAdapter
 from .http import SourceUnavailable, post_within_budget
+
+logger = logging.getLogger(__name__)
 
 VIES_URL = "https://ec.europa.eu/taxation_customs/vies/rest-api/check-vat-number"
 # Placeholders VIES sends instead of a name or address when a member state does not share it.
@@ -17,14 +21,35 @@ NO_DATA = {"", "---"}
 ViesUnavailable = SourceUnavailable
 
 
-def query_vies(vat_number, deadline):
+# VIES error for a requester VAT number it does not accept.
+INVALID_REQUESTER = "INVALID_REQUESTER_INFO"
+
+
+def query_vies(vat_number, deadline, requester_vat_number=""):
     """Ask VIES about a normalized VAT number such as "ATU12345678".
+
+    With `requester_vat_number` (the checking organization's own VAT number), VIES returns a
+    `requestIdentifier`, its consultation number, which is stored as evidence (REQ-FUNC-050). If VIES rejects
+    the requester, the query is repeated once without it, so the check itself still runs.
 
     Returns (parsed JSON answer, UTC time of the query that answered), so `dataTimestamp` is the time of
     the query and not of an earlier failed attempt (SRS 3.2.4). Transient errors are retried once within
     the budget (see post_within_budget). Raises ViesUnavailable when no usable answer arrives in time.
     """
     body = {"countryCode": vat_number[:2], "vatNumber": vat_number[2:]}
+    if requester_vat_number:
+        requester = {
+            **body,
+            "requesterMemberStateCode": requester_vat_number[:2],
+            "requesterNumber": requester_vat_number[2:],
+        }
+        try:
+            response, queried_at = post_within_budget(VIES_URL, deadline, source="VIES", json=requester)
+            return _parse(response), queried_at
+        except ViesUnavailable as error:
+            if error.code != INVALID_REQUESTER:
+                raise
+            logger.warning("VIES rejected the requester VAT number; asking again without it")
     response, queried_at = post_within_budget(VIES_URL, deadline, source="VIES", json=body)
     return _parse(response), queried_at
 
@@ -67,7 +92,7 @@ class ViesAdapter(SourceAdapter):
 
     def run(self, partner, deadline):
         try:
-            data, queried_at = query_vies(partner.vat_number, deadline)
+            data, queried_at = query_vies(partner.vat_number, deadline, partner.requesting_organization_vat_number)
         except ViesUnavailable as error:
             return self.unavailable(error.code)
 
