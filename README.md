@@ -243,7 +243,25 @@ This calls the real VIES service. The tests never do; they mock VIES. How VIES i
 
 ### Adding a data source
 
-Each source is one adapter in `checks/sources/` that subclasses `SourceAdapter` (`checks/sources/base.py`) and is listed in `checks/sources/__init__.py` (REQ-MAINT-003). The runner (`checks/runner.py`) calls all adapters in parallel with an 8 s budget. Adapters do not import Django, so they can be tried out in a plain Python shell.
+Each source (VIES, BMF, HFU, later Firmenbuch and GISA) is one adapter behind a common interface, so a source is added or changed without touching the others (REQ-MAINT-003). Adding one touches only its own module, the registry, its tests and its integration note:
+
+1. Write `checks/sources/<source>.py` with a subclass of `SourceAdapter` (`checks/sources/base.py`):
+   - `source`: the name reported in every result, e.g. `"BMF"`; unique.
+   - `checks`: the check names it answers, e.g. `("onBmfList",)`; each check belongs to one adapter only.
+   - `applies_to(partner)` (optional): return `False` when the source doesn't apply, e.g. non-Austrian partners; its checks are then `NOT_APPLICABLE` (REQ-FUNC-038).
+   - `run(partner, deadline)`: return one result per check, built with `self.result(...)` or `self.unknown(...)`. Give up by `deadline` (8 s incl. one retry, REQ-INT-013) and `return self.unavailable("TIMEOUT")` or another short error code instead of raising.
+2. Add one instance to `ADAPTERS` in `checks/sources/__init__.py`. The list order is the order of the checks in the response.
+3. Add `tests/test_checks_<source>.py` with the source mocked, and `docs/sources/<source>.md` (REQ-INT-016).
+
+The runner (`checks/runner.py`) only knows this interface: it calls all applicable adapters in parallel, and if one raises, overruns its budget or returns checks it didn't declare, only that adapter's checks become `UNKNOWN` / `SOURCE_UNAVAILABLE` (REQ-FUNC-039). The registry is checked when the app starts (`checks/sources/registry.py`), so a duplicate source or check name fails in CI. Adapters don't import Django, so they can be tried out in a plain Python shell:
+
+```python
+import time
+from checks.results import Partner
+from checks.sources.vies import ViesAdapter
+
+ViesAdapter().run(Partner("ATU12345678", "Muster Bau GmbH"), time.monotonic() + 8)
+```
 
 ## Tech stack
 
