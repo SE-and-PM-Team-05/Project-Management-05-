@@ -1,15 +1,18 @@
 """SCRUM-50: HFU adapter tests. The HFU service is mocked."""
 import time
-import requests
+from unittest import mock
+
 import pytest
-from checks.results import Partner, UNKNOWN, SOURCE_UNAVAILABLE
-from checks.sources.hfu import HfuAdapter, HfuUnavailable
+import requests
+
+from checks.results import SOURCE_UNAVAILABLE, UNKNOWN, Partner
 from checks.sources.hfu import (
-    parse_hfu_response,
+    HfuAdapter,
+    HfuUnavailable,
     build_hfu_request,
+    parse_hfu_response,
     query_hfu,
 )
-from unittest import mock
 
 
 def fake_hfu_service_response(dg_listed="J", epu_listed="N"):

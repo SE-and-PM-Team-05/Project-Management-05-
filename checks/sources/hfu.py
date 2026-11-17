@@ -3,13 +3,11 @@
 import logging
 import time
 import xml.etree.ElementTree as ET
+
 import requests
 
-
 from ..results import (
-    FALSE,
     SOURCE_UNAVAILABLE,
-    TRUE,
     UNKNOWN,
     CheckResult,
     utc_now,
