@@ -249,7 +249,7 @@ Each source (VIES, BMF, HFU, later Firmenbuch and GISA) is one adapter behind a 
    - `source`: the name reported in every result, e.g. `"BMF"`; unique.
    - `checks`: the check names it answers, e.g. `("onBmfList",)`; each check belongs to one adapter only.
    - `applies_to(partner)` (optional): return `False` when the source doesn't apply, e.g. non-Austrian partners; its checks are then `NOT_APPLICABLE` (REQ-FUNC-038).
-   - `run(partner, deadline)`: return one result per check, built with `self.result(...)` or `self.unknown(...)`. Give up by `deadline` (8 s incl. one retry, REQ-INT-013) and `return self.unavailable("TIMEOUT")` or another short error code instead of raising.
+   - `run(partner, deadline)`: return one result per check, built with `self.result(...)` or `self.unknown(...)`. Give up by `deadline` (8 s incl. one retry, REQ-INT-013) and `return self.unavailable("TIMEOUT")` or another short error code instead of raising. For a web service, call it with `post_within_budget(url, deadline, ...)` from `checks/sources/http.py`: it retries a timeout, network error or HTTP 5xx once within the budget (REQ-REL-003) and raises `SourceUnavailable(code)` otherwise.
 2. Add one instance to `ADAPTERS` in `checks/sources/__init__.py`. The list order is the order of the checks in the response.
 3. Add `tests/test_checks_<source>.py` with the source mocked, and `docs/sources/<source>.md` (REQ-INT-016).
 
