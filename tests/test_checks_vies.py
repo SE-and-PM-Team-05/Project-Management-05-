@@ -237,6 +237,7 @@ def test_req_maint_003_vies_is_registered():
 
     assert ViesAdapter in [type(a) for a in ADAPTERS]
 
+
 # --- Added in the SRS review ---
 
 

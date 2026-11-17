@@ -1,4 +1,5 @@
 """SCRUM-50: HFU adapter tests. The HFU service is mocked."""
+
 import time
 from unittest import mock
 
@@ -41,6 +42,8 @@ def test_fake_hfu_service_response_contains_listing_fields():
     assert response.status_code == 200
     assert "<hfuListeDgJN>J</hfuListeDgJN>" in response.text
     assert "<hfuListeEpuJN>N</hfuListeEpuJN>" in response.text
+
+
 def test_parse_hfu_response():
     response = fake_hfu_service_response("J", "N")
 
@@ -48,6 +51,8 @@ def test_parse_hfu_response():
 
     assert result["dienstgeber"] is True
     assert result["epu"] is False
+
+
 def test_hfu_listed_as_dienstgeber():
     response = fake_hfu_service_response("J", "N")
 
@@ -65,6 +70,7 @@ def test_hfu_listed_as_epu():
     assert result["dienstgeber"] is False
     assert result["epu"] is True
 
+
 def test_build_hfu_request():
     xml = build_hfu_request(
         organization_uid="ATU12345678",
@@ -79,6 +85,7 @@ def test_build_hfu_request():
     assert "2026-11-16" in xml
     assert "dienstgeberAbfragen" in xml
 
+
 def test_query_hfu_uses_mocked_service():
     fake_response = fake_hfu_service_response("J", "N")
 
@@ -86,7 +93,6 @@ def test_query_hfu_uses_mocked_service():
         "checks.sources.hfu.requests.post",
         return_value=fake_response,
     ) as mocked_post:
-
         result = query_hfu(
             organization_uid="ATU12345678",
             partner_uid="ATU12345675",
@@ -98,6 +104,7 @@ def test_query_hfu_uses_mocked_service():
     assert result["epu"] is False
 
     mocked_post.assert_called_once()
+
 
 def test_hfu_returns_unknown_without_organization_uid():
     partner = Partner(
@@ -115,6 +122,7 @@ def test_hfu_returns_unknown_without_organization_uid():
     assert result[0].reason == SOURCE_UNAVAILABLE
     mocked_post.assert_not_called()
 
+
 def test_query_hfu_retries_after_timeout():
     fake_response = fake_hfu_service_response("J", "N")
 
@@ -125,7 +133,6 @@ def test_query_hfu_retries_after_timeout():
             fake_response,
         ],
     ) as mocked_post:
-
         result = query_hfu(
             organization_uid="ATU12345678",
             partner_uid="ATU12345675",
@@ -136,6 +143,7 @@ def test_query_hfu_retries_after_timeout():
     assert result["dienstgeber"] is True
     assert mocked_post.call_count == 2
 
+
 def test_query_hfu_fails_after_two_timeouts():
     with mock.patch(
         "checks.sources.hfu.requests.post",
@@ -144,7 +152,6 @@ def test_query_hfu_fails_after_two_timeouts():
             requests.Timeout(),
         ],
     ) as mocked_post:
-
         with pytest.raises(HfuUnavailable) as error:
             query_hfu(
                 organization_uid="ATU12345678",
@@ -156,6 +163,7 @@ def test_query_hfu_fails_after_two_timeouts():
     assert error.value.code == "TIMEOUT"
     assert mocked_post.call_count == 2
 
+
 def test_query_hfu_retries_after_http_error():
     fake_response = fake_hfu_service_response("J", "N")
 
@@ -166,7 +174,6 @@ def test_query_hfu_retries_after_http_error():
             fake_response,
         ],
     ) as mocked_post:
-
         result = query_hfu(
             organization_uid="ATU12345678",
             partner_uid="ATU12345675",
@@ -176,6 +183,7 @@ def test_query_hfu_retries_after_http_error():
 
     assert result["dienstgeber"] is True
     assert mocked_post.call_count == 2
+
 
 def test_query_hfu_retries_after_invalid_response():
     invalid_response = mock.Mock(
@@ -189,7 +197,6 @@ def test_query_hfu_retries_after_invalid_response():
         "checks.sources.hfu.requests.post",
         side_effect=[invalid_response, fake_response],
     ) as mocked_post:
-
         result = query_hfu(
             organization_uid="ATU12345678",
             partner_uid="ATU12345675",
@@ -199,6 +206,7 @@ def test_query_hfu_retries_after_invalid_response():
 
     assert result["dienstgeber"] is True
     assert mocked_post.call_count == 2
+
 
 def test_hfu_adapter_returns_unknown_when_service_unavailable():
     partner = Partner(

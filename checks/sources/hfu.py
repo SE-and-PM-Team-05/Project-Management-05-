@@ -16,12 +16,10 @@ from .base import SourceAdapter
 
 logger = logging.getLogger(__name__)
 
-HFU_URL = (
-    "https://www.sozialversicherung.at/agh-ws-prod/"
-    "DienstgeberAbfrageWS_3_0"
-)
+HFU_URL = "https://www.sozialversicherung.at/agh-ws-prod/DienstgeberAbfrageWS_3_0"
 SOAP_NS = "http://schemas.xmlsoap.org/soap/envelope/"
 AGH_NS = "http://AGHExternWS_3_0.extern_3_0.ws.agh.noegkk.sozvers.at/"
+
 
 class HfuUnavailable(Exception):
     """HFU gave no usable answer."""
@@ -42,13 +40,9 @@ def build_hfu_request(organization_uid, partner_uid, stichtag):
     ET.SubElement(request, f"{{{AGH_NS}}}uidAuftraggeber").text = organization_uid
     ET.SubElement(request, f"{{{AGH_NS}}}stichtag").text = stichtag
 
-    partner_request = ET.SubElement(
-        request, f"{{{AGH_NS}}}auftragnehmerRQ"
-    )
+    partner_request = ET.SubElement(request, f"{{{AGH_NS}}}auftragnehmerRQ")
 
-    ET.SubElement(
-        partner_request, f"{{{AGH_NS}}}uidAuftragnehmer"
-    ).text = partner_uid
+    ET.SubElement(partner_request, f"{{{AGH_NS}}}uidAuftragnehmer").text = partner_uid
 
     return ET.tostring(envelope, encoding="unicode")
 
@@ -88,13 +82,12 @@ def query_hfu(organization_uid, partner_uid, stichtag, deadline):
             if response.status_code == 200:
                 try:
                     return parse_hfu_response(response.text)
-                except (ValueError, ET.ParseError):
+                except ValueError, ET.ParseError:
                     error = "INVALID_RESPONSE"
             else:
                 error = f"HTTP_{response.status_code}"
         logger.warning("HFU attempt %s failed: %s", attempt, error)
     raise HfuUnavailable(error)
-
 
 
 def parse_hfu_response(xml_text):
@@ -112,6 +105,8 @@ def parse_hfu_response(xml_text):
         "dienstgeber": dg_listed.text == "J",
         "epu": epu_listed.text == "J",
     }
+
+
 class HfuAdapter(SourceAdapter):
     source = "OEGK"
     checks = ("onHfuList",)
