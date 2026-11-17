@@ -91,6 +91,8 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "accounts.middleware.ForcePasswordChangeMiddleware",
+    # After the password-change redirect, which is for web sessions only; Bearer tokens work on /api/ (REQ-INT-011).
+    "accounts.middleware.ApiTokenMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
