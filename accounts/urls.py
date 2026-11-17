@@ -2,7 +2,7 @@ from django.contrib.auth import views as auth_views
 from django.urls import path
 from django.views.generic import TemplateView
 
-from . import views
+from . import token_views, views
 from .forms import LoginForm
 
 urlpatterns = [
@@ -30,6 +30,8 @@ urlpatterns = [
         views.delete_member,
         name="delete_member",
     ),
+    path("tokens/", token_views.api_tokens, name="api_tokens"),
+    path("tokens/<int:token_id>/revoke/", token_views.revoke_api_token, name="revoke_api_token"),
     # Login, logout and password reset are Django's built-in views (REQ-FUNC-003); lockout is in LoginForm and
     # accounts.backends (REQ-SEC-004).
     path(
