@@ -45,6 +45,7 @@ def response(status):
 
 
 def test_req_func_039_sources_run_in_parallel():
+    """Verifies REQ-FUNC-039."""
     adapters = [SleepingAdapter(name, 0.3) for name in ("A", "B", "C")]
     started = time.monotonic()
     results = runner.run_checks(PARTNER, adapters=adapters)
@@ -54,6 +55,7 @@ def test_req_func_039_sources_run_in_parallel():
 
 
 def test_req_func_039_slow_source_does_not_block_the_others(monkeypatch):
+    """Verifies REQ-FUNC-039."""
     monkeypatch.setattr(runner, "SOURCE_TIME_BUDGET", 0.3)
     started = time.monotonic()
     results = runner.run_checks(PARTNER, adapters=[SleepingAdapter("SLOW", 5), SleepingAdapter("FAST", 0)])
@@ -64,6 +66,7 @@ def test_req_func_039_slow_source_does_not_block_the_others(monkeypatch):
 
 
 def test_req_rel_001_failing_source_is_unknown_and_the_others_still_answer():
+    """Verifies REQ-REL-001."""
     results = runner.run_checks(PARTNER, adapters=[FailingAdapter(), SleepingAdapter("OK", 0)])
     assert [(r.check, r.result, r.reason) for r in results] == [
         ("failingCheck", "UNKNOWN", "SOURCE_UNAVAILABLE"),
@@ -72,6 +75,7 @@ def test_req_rel_001_failing_source_is_unknown_and_the_others_still_answer():
 
 
 def test_req_int_013_default_budget_is_8_seconds():
+    """Verifies REQ-INT-013."""
     assert runner.SOURCE_TIME_BUDGET == 8.0
 
 
@@ -80,6 +84,7 @@ def test_req_int_013_default_budget_is_8_seconds():
 
 @pytest.mark.parametrize("failure", [requests.Timeout(), requests.ConnectionError(), response(503)])
 def test_req_rel_003_transient_error_is_retried_once(failure):
+    """Verifies REQ-REL-003."""
     with mock.patch("checks.sources.http.requests.post", side_effect=[failure, response(200)]) as post:
         answer, queried_at = post_within_budget(URL, time.monotonic() + 8, json={})
     assert answer.status_code == 200
@@ -88,6 +93,7 @@ def test_req_rel_003_transient_error_is_retried_once(failure):
 
 
 def test_req_rel_003_second_failure_gives_up_with_the_last_error():
+    """Verifies REQ-REL-003."""
     side_effect = [requests.Timeout(), response(502)]
     with mock.patch("checks.sources.http.requests.post", side_effect=side_effect) as post:
         with pytest.raises(SourceUnavailable) as error:
@@ -97,6 +103,7 @@ def test_req_rel_003_second_failure_gives_up_with_the_last_error():
 
 
 def test_req_rel_003_client_error_is_not_retried():
+    """Verifies REQ-REL-003."""
     with mock.patch("checks.sources.http.requests.post", return_value=response(400)) as post:
         answer, _ = post_within_budget(URL, time.monotonic() + 8)
     assert answer.status_code == 400
@@ -104,6 +111,8 @@ def test_req_rel_003_client_error_is_not_retried():
 
 
 def test_req_int_013_retry_gets_only_the_time_that_is_left():
+    """Verifies REQ-INT-013."""
+
     def slow_timeout(url, timeout, **kwargs):
         time.sleep(0.2)
         raise requests.Timeout()
@@ -117,6 +126,7 @@ def test_req_int_013_retry_gets_only_the_time_that_is_left():
 
 
 def test_req_int_013_no_attempt_after_the_deadline():
+    """Verifies REQ-INT-013."""
     with mock.patch("checks.sources.http.requests.post") as post:
         with pytest.raises(SourceUnavailable) as error:
             post_within_budget(URL, time.monotonic() - 1)
@@ -125,6 +135,8 @@ def test_req_int_013_no_attempt_after_the_deadline():
 
 
 def test_req_int_013_no_retry_when_the_budget_ran_out_during_the_first_attempt():
+    """Verifies REQ-INT-013."""
+
     def answer_late(url, timeout, **kwargs):
         time.sleep(0.15)
         raise requests.Timeout()

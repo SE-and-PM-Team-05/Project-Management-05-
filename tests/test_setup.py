@@ -8,6 +8,7 @@ from config.settings import parse_database_url
 
 
 def test_parse_database_url():
+    """Verifies REQ-PORT-001."""
     db = parse_database_url("postgres://app:p%40ss@db.example.com:6543/bpc")
     assert db["NAME"] == "bpc"
     assert db["USER"] == "app"
@@ -21,6 +22,7 @@ def test_parse_database_url():
 
 
 def test_parse_database_url_passes_neon_ssl_options():
+    """Verifies REQ-PORT-001."""
     url = "postgresql://app:secret@ep-example.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
     db = parse_database_url(url)
     assert db["NAME"] == "neondb"
@@ -28,12 +30,14 @@ def test_parse_database_url_passes_neon_ssl_options():
 
 
 def test_home_and_healthz(client):
+    """Verifies REQ-INST-001."""
     assert client.get(reverse("home")).status_code == 200
     assert client.get(reverse("healthz")).content == b"ok"
 
 
 @pytest.mark.django_db
 def test_create_superadmin_only_once(capsys):
+    """Verifies REQ-FUNC-005."""
     call_command("create_superadmin", "admin@example.com")
     out = capsys.readouterr().out
     password = out.split("One-time password: ")[1].split()[0]
@@ -50,6 +54,7 @@ def test_create_superadmin_only_once(capsys):
 
 @pytest.mark.django_db
 def test_one_time_password_must_be_changed(client):
+    """Verifies REQ-FUNC-005."""
     call_command("create_superadmin", "admin@example.com")
     admin = User.objects.get()
     admin.set_password("one-time")
@@ -72,6 +77,7 @@ def test_one_time_password_must_be_changed(client):
 
 
 def test_render_hostname_is_allowed(monkeypatch):
+    """Verifies REQ-INST-001, REQ-PORT-001."""
     import importlib
 
     import config.settings as config_settings

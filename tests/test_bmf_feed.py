@@ -12,6 +12,7 @@ from .bmf_samples import COMPANY, SAMPLE, feed, item
 
 
 def test_reads_every_entry_with_the_fields_the_check_needs():
+    """Verifies REQ-FUNC-070, REQ-FUNC-033."""
     result = bmf_feed.parse(SAMPLE)
 
     assert result.build_date == date(2026, 11, 4)
@@ -34,6 +35,7 @@ def test_reads_every_entry_with_the_fields_the_check_needs():
 
 
 def test_req_comp_001_date_of_birth_is_not_kept():
+    """Verifies REQ-COMP-001."""
     person = bmf_feed.parse(SAMPLE).entries[1]
 
     assert "1980" not in repr(person)
@@ -41,6 +43,7 @@ def test_req_comp_001_date_of_birth_is_not_kept():
 
 def test_accepts_the_markup_the_poc_parsed():
     # The POC's patterns, e.g. "Firmenbuch-Nr: 123456a" and "UID-NR:</em> ATU…", without extra tags.
+    """Verifies REQ-FUNC-070."""
     description = (
         "Anschrift: <strong>Ring 5, 4020 Linz</strong> <em>Veröffentlichung:</em> 01.09.2026, "
         "Firmenbuch-Nr: 654321B <em>UID-NR:</em> ATU87654321"
@@ -57,6 +60,7 @@ def test_accepts_the_markup_the_poc_parsed():
 
 @pytest.mark.parametrize("build_date", ["Wed, 04 Nov 2026", "04 Nov 2026 00:00:00 GMT", "4 nov 2026"])
 def test_build_date_ignores_weekday_time_and_case(build_date):
+    """Verifies REQ-FUNC-072."""
     assert bmf_feed.parse(feed(item("A GmbH", COMPANY), build_date=build_date)).build_date == date(2026, 11, 4)
 
 
@@ -77,6 +81,7 @@ def test_build_date_ignores_weekday_time_and_case(build_date):
     ],
 )
 def test_req_func_073_anything_unreadable_fails_loudly(xml_bytes, code):
+    """Verifies REQ-FUNC-073."""
     with pytest.raises(FeedError) as raised:
         bmf_feed.parse(xml_bytes)
 
@@ -90,6 +95,7 @@ class FakeResponse:
 
 
 def test_download_returns_the_raw_feed(monkeypatch):
+    """Verifies REQ-FUNC-070."""
     monkeypatch.setattr(bmf_feed.requests, "get", lambda url, timeout: FakeResponse(200, SAMPLE))
 
     assert bmf_feed.download() == SAMPLE
@@ -104,6 +110,8 @@ def test_download_returns_the_raw_feed(monkeypatch):
     ],
 )
 def test_download_errors_have_a_short_code(monkeypatch, outcome, code):
+    """Verifies REQ-FUNC-070, REQ-FUNC-073."""
+
     def get(url, timeout):
         if isinstance(outcome, Exception):
             raise outcome

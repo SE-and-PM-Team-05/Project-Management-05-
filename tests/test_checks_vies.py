@@ -45,6 +45,7 @@ def run_vies(partner, *answers):
 
 
 def test_req_func_031_valid_at_number_is_true():
+    """Verifies REQ-FUNC-031."""
     results, post = run_vies(AT_PARTNER, valid_answer())
     assert results["vatValid"].result == "TRUE"
     assert results["vatValid"].source == "VIES"
@@ -55,12 +56,14 @@ def test_req_func_031_valid_at_number_is_true():
 
 
 def test_req_func_031_valid_de_number_is_true():
+    """Verifies REQ-FUNC-031."""
     results, post = run_vies(DE_PARTNER, valid_answer(name="---", address="---"))
     assert results["vatValid"].result == "TRUE"
     assert post.call_args.kwargs["json"] == {"countryCode": "DE", "vatNumber": "123456789"}
 
 
 def test_req_func_031_invalid_number_is_false():
+    """Verifies REQ-FUNC-031."""
     results, _ = run_vies(AT_PARTNER, vies_response(valid=False, name="---", address="---"))
     assert results["vatValid"].result == "FALSE"
     assert results["nameMatchesVat"].result == "UNKNOWN"
@@ -76,6 +79,7 @@ def test_req_func_031_invalid_number_is_false():
     ],
 )
 def test_req_int_013_vies_down_twice_is_unknown_source_unavailable(answer):
+    """Verifies REQ-INT-013."""
     results, post = run_vies(AT_PARTNER, answer, answer)
     assert post.call_count == 2  # one retry (REQ-REL-003)
     for check in ("vatValid", "nameMatchesVat"):
@@ -85,6 +89,7 @@ def test_req_int_013_vies_down_twice_is_unknown_source_unavailable(answer):
 
 @pytest.mark.parametrize("error", ["MS_UNAVAILABLE", "TIMEOUT", "MS_MAX_CONCURRENT_REQ"])
 def test_req_func_031_vies_side_error_is_unknown_without_retry(error):
+    """Verifies REQ-FUNC-031."""
     answer = vies_response(actionSucceed=False, errorWrappers=[{"error": error, "message": "x"}])
     results, post = run_vies(AT_PARTNER, answer)
     assert post.call_count == 1
@@ -94,6 +99,7 @@ def test_req_func_031_vies_side_error_is_unknown_without_retry(error):
 
 
 def test_req_func_031_unexpected_answer_is_unknown():
+    """Verifies REQ-FUNC-031."""
     results, _ = run_vies(AT_PARTNER, vies_response(something="else"))
     assert results["vatValid"].result == "UNKNOWN"
     assert results["vatValid"].reason == "SOURCE_UNAVAILABLE"
@@ -101,6 +107,7 @@ def test_req_func_031_unexpected_answer_is_unknown():
 
 @pytest.mark.parametrize("failure", [requests.Timeout(), requests.ConnectionError(), vies_response(status=502)])
 def test_req_rel_003_transient_failure_then_success_gives_result(failure):
+    """Verifies REQ-REL-003."""
     results, post = run_vies(AT_PARTNER, failure, valid_answer())
     assert post.call_count == 2
     assert results["vatValid"].result == "TRUE"
@@ -108,6 +115,7 @@ def test_req_rel_003_transient_failure_then_success_gives_result(failure):
 
 
 def test_req_rel_003_no_retry_when_budget_is_used_up():
+    """Verifies REQ-REL-003."""
     with mock.patch("checks.sources.http.requests.post", side_effect=requests.Timeout()) as post:
         results = ViesAdapter().run(AT_PARTNER, time.monotonic() - 1)
     assert post.call_count == 0
@@ -115,6 +123,7 @@ def test_req_rel_003_no_retry_when_budget_is_used_up():
 
 
 def test_req_int_013_timeout_passed_to_requests_stays_within_budget():
+    """Verifies REQ-INT-013."""
     _, post = run_vies(AT_PARTNER, valid_answer())
     assert 0 < post.call_args.kwargs["timeout"] <= 8
 
@@ -127,6 +136,7 @@ REQUESTING_PARTNER = Partner(
 
 
 def test_req_func_050_requester_vat_number_is_sent_and_reference_reported():
+    """Verifies REQ-FUNC-050."""
     answer = valid_answer()
     answer.json.return_value["requestIdentifier"] = "WAPIAAAAZ1b2c3d4"
     results, post = run_vies(REQUESTING_PARTNER, answer)
@@ -140,6 +150,7 @@ def test_req_func_050_requester_vat_number_is_sent_and_reference_reported():
 
 
 def test_req_func_050_rejected_requester_is_left_out_and_the_check_still_runs():
+    """Verifies REQ-FUNC-050."""
     rejected = vies_response(status=400, actionSucceed=False, errorWrappers=[{"error": "INVALID_REQUESTER_INFO"}])
     results, post = run_vies(REQUESTING_PARTNER, rejected, valid_answer())
     assert post.call_count == 2
@@ -148,6 +159,7 @@ def test_req_func_050_rejected_requester_is_left_out_and_the_check_still_runs():
 
 
 def test_req_func_050_other_vies_error_is_not_asked_again_without_requester():
+    """Verifies REQ-FUNC-050."""
     error = vies_response(status=200, actionSucceed=False, errorWrappers=[{"error": "MS_UNAVAILABLE"}])
     results, post = run_vies(REQUESTING_PARTNER, error)
     assert post.call_count == 1
@@ -158,12 +170,14 @@ def test_req_func_050_other_vies_error_is_not_asked_again_without_requester():
 
 
 def test_req_func_032_same_name_different_case_is_true():
+    """Verifies REQ-FUNC-032."""
     results, _ = run_vies(AT_PARTNER, valid_answer(name="MUSTER BAU GMBH"))
     assert results["nameMatchesVat"].result == "TRUE"
     assert results["nameMatchesVat"].details == {"registeredName": "MUSTER BAU GMBH"}
 
 
 def test_req_func_032_other_company_is_false():
+    """Verifies REQ-FUNC-032."""
     results, _ = run_vies(AT_PARTNER, valid_answer(name="ANDERE FIRMA GMBH"))
     assert results["nameMatchesVat"].result == "FALSE"
     assert results["nameMatchesVat"].details == {"registeredName": "ANDERE FIRMA GMBH"}
@@ -171,6 +185,7 @@ def test_req_func_032_other_company_is_false():
 
 @pytest.mark.parametrize("name", [None, "", "---", "  ---  "])
 def test_req_func_032_no_name_from_vies_is_no_details_found(name):
+    """Verifies REQ-FUNC-032."""
     results, _ = run_vies(DE_PARTNER, valid_answer(name=name))
     assert results["nameMatchesVat"].result == "UNKNOWN"
     assert results["nameMatchesVat"].reason == "NO_DETAILS_FOUND"
@@ -191,6 +206,7 @@ def test_req_func_032_no_name_from_vies_is_no_details_found(name):
     ],
 )
 def test_req_func_032_case_punctuation_and_legal_form_are_ignored(given, registered):
+    """Verifies REQ-FUNC-032."""
     assert names_match(given, registered)
 
 
@@ -203,10 +219,12 @@ def test_req_func_032_case_punctuation_and_legal_form_are_ignored(given, registe
     ],
 )
 def test_req_func_032_different_names_do_not_match(given, registered):
+    """Verifies REQ-FUNC-032."""
     assert not names_match(given, registered)
 
 
 def test_req_func_032_name_that_is_only_a_legal_form_is_kept():
+    """Verifies REQ-FUNC-032."""
     assert normalize_company_name("AG") == "ag"
 
 
@@ -242,6 +260,7 @@ class AustriaOnlyAdapter(SourceAdapter):
 
 
 def test_req_int_013_source_that_never_answers_is_unknown_within_budget(monkeypatch):
+    """Verifies REQ-INT-013."""
     monkeypatch.setattr(runner, "SOURCE_TIME_BUDGET", 0.2)
     started = time.monotonic()
     results = runner.run_checks(AT_PARTNER, adapters=[SlowAdapter()])
@@ -252,6 +271,7 @@ def test_req_int_013_source_that_never_answers_is_unknown_within_budget(monkeypa
 
 
 def test_req_func_039_failing_source_does_not_stop_the_others():
+    """Verifies REQ-FUNC-039."""
     with mock.patch("checks.sources.http.requests.post", return_value=valid_answer()):
         results = runner.run_checks(AT_PARTNER, adapters=[BrokenAdapter(), ViesAdapter()])
     by_check = {r.check: r for r in results}
@@ -262,12 +282,14 @@ def test_req_func_039_failing_source_does_not_stop_the_others():
 
 
 def test_req_func_038_source_that_does_not_apply_is_not_applicable():
+    """Verifies REQ-FUNC-038."""
     results = runner.run_checks(DE_PARTNER, adapters=[AustriaOnlyAdapter()])
     assert results[0].result == "NOT_APPLICABLE"
     assert "dataTimestamp" not in results[0].to_json()
 
 
 def test_req_maint_003_vies_is_registered():
+    """Verifies REQ-MAINT-003."""
     from checks.sources import ADAPTERS
 
     assert ViesAdapter in [type(a) for a in ADAPTERS]
@@ -277,6 +299,7 @@ def test_req_maint_003_vies_is_registered():
 
 
 def test_req_func_031_vies_error_in_4xx_body_keeps_the_vies_code():
+    """Verifies REQ-FUNC-031."""
     answer = vies_response(status=400, actionSucceed=False, errorWrappers=[{"error": "INVALID_INPUT"}])
     results, post = run_vies(AT_PARTNER, answer)
     assert post.call_count == 1  # 4xx is not transient (REQ-REL-003)
@@ -285,11 +308,13 @@ def test_req_func_031_vies_error_in_4xx_body_keeps_the_vies_code():
 
 
 def test_req_func_031_is_valid_field_name_is_accepted():
+    """Verifies REQ-FUNC-031."""
     results, _ = run_vies(AT_PARTNER, vies_response(isValid=True, name="MUSTER BAU GMBH"))
     assert results["vatValid"].result == "TRUE"
 
 
 def test_srs_3_2_4_data_timestamp_is_time_of_the_answering_query():
+    """Verifies REQ-FUNC-045."""
     times = iter(["first", "second"])
     with mock.patch("checks.sources.http.utc_now", side_effect=lambda: next(times)):
         results, _ = run_vies(AT_PARTNER, requests.ConnectionError(), valid_answer())
