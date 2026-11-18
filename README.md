@@ -12,7 +12,7 @@ BizPartnerCheck is a multi-tenant web service that automates the due-diligence c
 
 The Django skeleton and CI are in place (**SCRUM-17**). The app is deployed to **Render**, with the database on **Neon** and email through **Brevo** (decided in **SCRUM-42**); see [Deployment](#deployment) for the one-time setup.
 
-Organizations can register (**SCRUM-21**), and `POST /api/v1/checks` checks a VAT number and company name against VIES (**SCRUM-24**, see [API](#api)). Users create, list and revoke API tokens on the **API tokens** page (`/tokens/`) or through `/api/v1/tokens` (**SCRUM-72**); the API does not accept them for authentication yet (**SCRUM-71**).
+Organizations can register (**SCRUM-21**), and `POST /api/v1/checks` checks a VAT number and company name against VIES (**SCRUM-24**, see [API](#api)). Users create, list and revoke API tokens on the **API tokens** page (`/tokens/`) or through `/api/v1/tokens` (**SCRUM-72**), and every API call can authenticate with one as a Bearer token (**SCRUM-71**), limited to 200 calls per minute per token (**SCRUM-73**).
 
 ## Run it locally
 
@@ -229,11 +229,40 @@ A push to `main` deploys only after CI is green: the `deploy` job in `.github/wo
 
 All endpoints live under `/api/v1/` and answer in JSON. Times are UTC in ISO 8601.
 
+### Authentication
+
+Every endpoint needs an API token or a logged-in web session (REQ-INT-011).
+
+- **API token (for your software):** create one on the **API tokens** page (`/tokens/`) and send it in every call as `Authorization: Bearer <token>`. No CSRF token and no cookies are needed. The call runs as the token's owner, with the owner's roles at the moment of the call (REQ-FUNC-021): a token of a user without the Request User role gets 403 on `POST /api/v1/checks`, and removing a role takes effect on the next call.
+- **Web session (for trying things in the browser):** log in and send the CSRF token in the `X-CSRFToken` header for `POST` and `DELETE`.
+
+The token is checked against the database on every call, so a revoked or expired token, or a token of a deactivated or deleted user, gets **401 `INVALID_TOKEN`** on the very next call (REQ-FUNC-023 asks for 60 s). The answer is the same for every reason, with the header `WWW-Authenticate: Bearer error="invalid_token"`. If the `Authorization` header is sent, it alone decides: a bad token is 401 even if the caller is also logged in. Tokens work only under `/api/`; they never log anybody into the web pages. The first 8 characters shown in the token list are not enough to authenticate.
+
+```bash
+curl -X POST https://<your-service>.onrender.com/api/v1/checks \
+  -H "Authorization: Bearer $BPC_TOKEN" -H "Content-Type: application/json" \
+  -d '{"vatNumber": "ATU12345678", "companyName": "Muster Bau GmbH"}'
+```
+
+### Rate limit
+
+Each token may make **200 requests per minute** (REQ-SEC-003), counted over all endpoints. The minute starts with the first call after the previous minute ended. Every answer to a token call carries the remaining quota:
+
+| Header | Meaning |
+|---|---|
+| `X-RateLimit-Limit` | `200` |
+| `X-RateLimit-Remaining` | Calls left in the current minute |
+| `X-RateLimit-Reset` | Seconds until the current minute ends |
+
+The 201st call within the minute gets **429 `RATE_LIMIT_EXCEEDED`** with `Retry-After` (seconds). It is rejected before anything else happens: no check runs and nothing is stored (UC-04, 2b). Rejected calls don't count, so waiting `Retry-After` seconds is always enough. The limit is per token, not per user: a second token has its own 200. Web-session calls have no per-token limit.
+
+The count is kept on the token's database row and changed under a row lock, so it is exact even when several app processes serve the same token.
+
 ### `POST /api/v1/checks` – check a business partner
 
-Runs the checks implemented so far, `vatValid` and `nameMatchesVat`, both answered by one call to VIES (REQ-FUNC-030…032). The other checks (fake-company list, HFU, Firmenbuch, GISA) are added in later sprints and are not in the response yet. Every accepted request is **stored** as evidence, atomically with all its results (REQ-REL-004); `requestId` is its ID. Stored requests cannot be changed, only deleted as a whole (REQ-FUNC-051). Invalid or rejected calls store nothing.
+Runs the checks implemented so far, `vatValid` and `nameMatchesVat`, both answered by one call to VIES (REQ-FUNC-030…032). The other checks (fake-company list, HFU, Firmenbuch, GISA) are added in later sprints and are not in the response yet. Every accepted request is **stored** as evidence, atomically with all its results (REQ-REL-004); `requestId` is its ID. Stored requests cannot be changed, only deleted as a whole (REQ-FUNC-051): `save()`, `QuerySet.update()` and `bulk_update()` refuse, and there is no admin page or API route that edits them. Partners are never re-checked automatically, not after a sync and not over time; a re-check is a new request (REQ-FUNC-040, REQ-FUNC-041). Invalid or rejected calls store nothing.
 
-**Authentication (for now):** a logged-in web session of a user with the Request User role, plus the CSRF token in the `X-CSRFToken` header. API tokens follow with SCRUM-48 (REQ-FUNC-020).
+**Authentication:** an API token or web session (see [Authentication](#authentication)) of a user with the Request User role. With a token, `requestedBy.tokenName` in the answer and in the stored request is the token's name (never its value); with a web session it is `null`.
 
 Request body:
 
@@ -273,7 +302,9 @@ Errors return `{"error": {"code": "…", "message": "…", "fields": {…}}}`:
 |---|---|---|
 | 400 | `INVALID_INPUT` | Missing or malformed field; `fields` names each one. VIES is not called. |
 | 400 | `INVALID_JSON` | Body is not JSON. |
-| 401 | `NOT_AUTHENTICATED` | Not logged in. |
+| 401 | `NOT_AUTHENTICATED` | No `Authorization` header and not logged in. |
+| 401 | `INVALID_TOKEN` | The Bearer token is unknown, revoked or expired, its owner is deactivated, or the header is not `Bearer <token>`. |
+| 429 | `RATE_LIMIT_EXCEEDED` | More than 200 calls in a minute with this token; see [Rate limit](#rate-limit). Nothing is stored. |
 | 403 | `PERMISSION_DENIED` | User lacks the Request User role. |
 | 403 | `CSRF_FAILED` | Session call without `X-CSRFToken` header. |
 | 405 | `METHOD_NOT_ALLOWED` | Anything other than POST. |
@@ -294,7 +325,7 @@ This calls the real VIES service. The tests never do; they mock VIES. How VIES i
 
 ### `/api/v1/tokens` – manage API tokens
 
-Every user of an organization manages their own tokens; an Org Admin manages all tokens of the organization (SRS Appendix A, REQ-FUNC-020…023). The same rules apply on the web page `/tokens/`. Authentication is the web session with the `X-CSRFToken` header for `POST` and `DELETE`, as above; Bearer tokens follow with SCRUM-71.
+Every user of an organization manages their own tokens; an Org Admin manages all tokens of the organization (SRS Appendix A, REQ-FUNC-020…023). The same rules apply on the web page `/tokens/`. Authentication as described in [Authentication](#authentication). With a Bearer token you can list tokens and revoke them (a token can revoke itself), but not create new ones (`403 PERMISSION_DENIED`): otherwise a leaked token could create replacements that keep working after it is revoked.
 
 | Call | Body | Answer |
 |---|---|---|
@@ -315,7 +346,7 @@ Every user of an organization manages their own tokens; an Org Admin manages all
 - The value starts with `bpc_`, so secret scanners can recognise a leaked token, followed by 320 random bits (still 300 after the visible first 8 characters); it is stored only as a SHA-256 hash (REQ-SEC-002). `token` appears **only in the `POST` answer**; afterwards no page or response shows more than the first 8 characters (`prefix`, REQ-FUNC-022).
 - Tokens never expire unless `expiresAt` is set; it must lie in the future and in 2100 or earlier. Revoking is final.
 - Deactivating a user revokes all their tokens; reactivating does not bring them back. Deleting a user deletes their tokens (REQ-FUNC-023).
-- Errors use the same format and codes as `/api/v1/checks`, plus `404 NOT_FOUND` for a token of another user (unless you are Org Admin) or of another organization (REQ-FUNC-013). Creating a token for another user without the Org Admin role is `403 PERMISSION_DENIED`; the Super Admin has no organization and gets 403.
+- Errors use the same format and codes as `/api/v1/checks` (including 401 `INVALID_TOKEN` and 429), plus `404 NOT_FOUND` for a token of another user (unless you are Org Admin) or of another organization (REQ-FUNC-013). Creating a token for another user without the Org Admin role is `403 PERMISSION_DENIED`; the Super Admin has no organization and gets 403.
 
 ### Adding a data source
 
