@@ -46,7 +46,7 @@ class CheckRequest(ImmutableModel):
     )
     requested_by_name = models.CharField(max_length=300)
     channel = models.CharField(max_length=3, choices=[(CHANNEL_API, "API"), (CHANNEL_WEB, "Web")])
-    # Name of the API token, never its value (REQ-FUNC-045); empty until tokens exist (SCRUM-48).
+    # Name of the API token, never its value (REQ-FUNC-045); empty for calls with a web session.
     token_name = models.CharField(max_length=100, blank=True)
 
     vat_number = models.CharField(max_length=20)
