@@ -33,12 +33,15 @@ class ForcePasswordChangeMiddleware:
 
 
 class ApiTokenMiddleware:
-    """Authenticate API calls that send `Authorization: Bearer <token>` (REQ-INT-011, SCRUM-71).
+    """Authenticate API calls that send `Authorization: Bearer <token>` and limit their rate (SCRUM-71, SCRUM-73).
 
     Only paths under /api/ accept tokens; a token never logs anybody into the web pages. If the header is present, it
     decides alone: a bad token is 401 even if the caller also has a web session. With a valid token, request.user is
     the token's owner and request.api_token the token; views skip the CSRF check for such calls, because a token is
     not sent automatically by a browser. Without the header nothing changes and the web session applies.
+
+    Every answer to a valid token carries the X-RateLimit-* headers; a call over the limit gets 429 with Retry-After
+    before the view runs, so nothing is checked or stored (REQ-SEC-003, UC-04 2b).
     """
 
     def __init__(self, get_response):
@@ -52,15 +55,28 @@ class ApiTokenMiddleware:
 
         try:
             value = bearer_value(header)
-            token = authenticate_token(value) if value else None
+            authenticated = authenticate_token(value) if value else None
         except Exception:
             logger.exception("Token authentication failed")
             return api_error(500, "INTERNAL_ERROR", _("Something went wrong on our side. Please try again later."))
-        if token is None:
+        if authenticated is None:
             response = api_error(401, "INVALID_TOKEN", _("The API token is missing, unknown, revoked or expired."))
             response["WWW-Authenticate"] = 'Bearer error="invalid_token"'
             return response
 
-        request.user = token.user
-        request.api_token = token
-        return self.get_response(request)
+        token, quota = authenticated
+        if quota.allowed:
+            request.user = token.user
+            request.api_token = token
+            response = self.get_response(request)
+        else:
+            message = _("This token made more than %(limit)d requests in a minute. Try again in %(seconds)d s.") % {
+                "limit": quota.limit,
+                "seconds": quota.reset_seconds,
+            }
+            response = api_error(429, "RATE_LIMIT_EXCEEDED", message)
+            response["Retry-After"] = str(quota.reset_seconds)
+        response["X-RateLimit-Limit"] = str(quota.limit)
+        response["X-RateLimit-Remaining"] = str(quota.remaining)
+        response["X-RateLimit-Reset"] = str(quota.reset_seconds)
+        return response
