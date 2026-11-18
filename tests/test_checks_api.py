@@ -364,7 +364,7 @@ def test_sec_session_post_with_csrf_token_is_accepted(request_user, vies):
 
     client = Client(enforce_csrf_checks=True)
     client.force_login(request_user)
-    client.get(reverse("login"))  # sets the csrftoken cookie
+    client.get(reverse("home"))  # the logout form sets the csrftoken cookie
     token = client.cookies["csrftoken"].value
     response = client.post(URL, VALID_INPUT, content_type="application/json", headers={"X-CSRFToken": token})
     assert response.status_code == 200

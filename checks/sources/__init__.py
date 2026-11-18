@@ -1,9 +1,15 @@
-"""Registry of all source adapters (REQ-MAINT-003): adding a source means adding one line here."""
+"""Registry of all source adapters (REQ-MAINT-003): adding a source means adding one line here.
+
+The order of ADAPTERS is the order of the checks in every response.
+"""
 
 from .hfu import HfuAdapter
+from .registry import validate
 from .vies import ViesAdapter
 
-ADAPTERS = [
-    ViesAdapter(),
-    HfuAdapter(),
-]
+ADAPTERS = validate(
+    [
+        ViesAdapter(),
+        HfuAdapter(),
+    ]
+)
