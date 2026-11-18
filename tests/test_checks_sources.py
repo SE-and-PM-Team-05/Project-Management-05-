@@ -150,3 +150,47 @@ def test_req_func_039_results_follow_the_declared_order():
 def test_req_func_039_adapter_returning_nothing_is_unknown():
     results = runner.run_checks(PARTNER, adapters=[adapter("A", ("one",), run=lambda self, p, d: None)])
     assert [(r.result, r.reason) for r in results] == [("UNKNOWN", "SOURCE_UNAVAILABLE")]
+
+
+# --- No adapter code on the failure path (review of SCRUM-59) ---
+
+
+class OwnUnavailableAdapter(SourceAdapter):
+    """Like the HFU adapter: overrides unavailable() with another signature, then fails or overruns."""
+
+    source = "OWN"
+    checks = ("ownCheck",)
+
+    def __init__(self, sleep=0):
+        self.sleep = sleep
+
+    def unavailable(self, stichtag, error):
+        raise AssertionError("the runner must not call adapter code when the source failed")
+
+    def run(self, partner, deadline):
+        if self.sleep:
+            time.sleep(self.sleep)
+        raise RuntimeError("source is down")
+
+
+@pytest.mark.parametrize("sleep", [0, 1], ids=["raises", "overruns the budget"])
+def test_req_func_039_failure_path_runs_no_adapter_code(monkeypatch, sleep):
+    monkeypatch.setattr(runner, "SOURCE_TIME_BUDGET", 0.2)
+    with mock.patch(
+        "checks.sources.vies.query_vies", return_value=({"valid": True, "name": "Muster Bau GmbH"}, utc_now())
+    ):
+        results = runner.run_checks(PARTNER, adapters=[OwnUnavailableAdapter(sleep), ViesAdapter()])
+    assert [(r.check, r.result, r.reason) for r in results] == [
+        ("ownCheck", "UNKNOWN", "SOURCE_UNAVAILABLE"),
+        ("vatValid", TRUE, None),
+        ("nameMatchesVat", TRUE, None),
+    ]
+
+
+def test_req_func_039_duplicate_result_keeps_the_first(caplog):
+    def run(self, partner, deadline):
+        return [self.result("one", TRUE, utc_now()), self.result("one", FALSE, utc_now())]
+
+    results = runner.run_checks(PARTNER, adapters=[adapter("A", ("one",), run=run)])
+    assert [(r.check, r.result) for r in results] == [("one", TRUE)]
+    assert "returned one twice" in caplog.text

@@ -47,8 +47,19 @@ def run_checks(partner, adapters=None):
                 logger.error("Source %s failed", adapter.source, exc_info=future.exception())
             else:
                 logger.warning("Source %s exceeded the %s s budget", adapter.source, SOURCE_TIME_BUDGET)
-            results += adapter.unavailable(data_timestamp=started_at)
+            results += _unavailable(adapter, started_at)
     return results
+
+
+def _unavailable(adapter, started_at):
+    """UNKNOWN / SOURCE_UNAVAILABLE for every check of an adapter that failed or overran its budget.
+
+    Built here and not by the adapter: no adapter code may run on the failure path, so a faulty or
+    differently written adapter can never turn its own failure into an error of the whole request.
+    """
+    return [
+        CheckResult(name, UNKNOWN, adapter.source, started_at, reason=SOURCE_UNAVAILABLE) for name in adapter.checks
+    ]
 
 
 def _checked(adapter, returned, started_at):
@@ -60,14 +71,13 @@ def _checked(adapter, returned, started_at):
     """
     by_check = {}
     for result in returned or ():
-        if isinstance(result, CheckResult) and result.check in adapter.checks and result.source == adapter.source:
-            by_check.setdefault(result.check, result)
-        else:
+        if not (isinstance(result, CheckResult) and result.check in adapter.checks and result.source == adapter.source):
             logger.error("Source %s returned a result it does not own: %r", adapter.source, result)
+        elif result.check in by_check:
+            logger.error("Source %s returned %s twice; keeping the first", adapter.source, result.check)
+        else:
+            by_check[result.check] = result
     missing = [name for name in adapter.checks if name not in by_check]
     if missing:
         logger.error("Source %s returned no result for %s", adapter.source, ", ".join(missing))
-    return [
-        by_check.get(name) or CheckResult(name, UNKNOWN, adapter.source, started_at, reason=SOURCE_UNAVAILABLE)
-        for name in adapter.checks
-    ]
+    return [by_check.get(fallback.check, fallback) for fallback in _unavailable(adapter, started_at)]

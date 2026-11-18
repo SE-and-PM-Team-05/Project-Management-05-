@@ -11,7 +11,7 @@ class SourceAdapter:
 
     To add a source, write a subclass in its own module under checks/sources/ and add one instance to
     ADAPTERS in checks/sources/__init__.py. Nothing else changes: the runner, the API and the other
-    adapters only know this interface. See docs/sources/README.md.
+    adapters only know this interface. See "Adding a data source" in README.md.
     """
 
     #: Name reported as "source" in every result, e.g. "VIES". Unique across the registry.
@@ -27,9 +27,10 @@ class SourceAdapter:
     def run(self, partner, deadline):
         """Return one CheckResult per name in `checks`.
 
-        `deadline` is a time.monotonic() value; the adapter must give up by then (REQ-INT-013). An
-        unavailable source is reported as UNKNOWN / SOURCE_UNAVAILABLE (see `unavailable`), never raised.
-        The runner still guards against adapters that raise, overrun or return the wrong checks.
+            `deadline` is a time.monotonic() value; the adapter must give up by then (REQ-INT-013). An
+            unavailable source is reported as UNKNOWN / SOURCE_UNAVAILABLE (see `unavailable`), never raised.
+            The runner still guards against adapters that raise, overrun or return the wrong checks, without
+        calling adapter code for that.
         """
         raise NotImplementedError
 
