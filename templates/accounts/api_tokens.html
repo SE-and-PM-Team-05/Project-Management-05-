@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}API tokens – BizPartnerCheck{% endblock %}
+
+{% block content %}
+<h1>API tokens</h1>
+
+<p>
+  Your software calls the BizPartnerCheck API with a token. A token has exactly the rights of its owner.
+  {% if show_owner %}As Org Admin you see and manage the tokens of everyone in your organization.{% endif %}
+</p>
+
+{% for message in messages %}
+  <p>{{ message }}</p>
+{% endfor %}
+
+{% if new_value %}
+  <section style="border: 2px solid #2e7d32; padding: .5rem 1rem; margin-bottom: 1.5rem;">
+    <h2>Token “{{ new_token.name }}” created</h2>
+    <p><strong>Copy it now. It is shown only this once and cannot be displayed again.</strong></p>
+    <input type="text" id="new-token-value" aria-label="New token value" readonly onclick="this.select()" value="{{ new_value }}">
+  </section>
+{% endif %}
+
+<h2>Create a token</h2>
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_div }}
+  <button type="submit">Create token</button>
+</form>
+
+<h2>Tokens</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Starts with</th>
+      {% if show_owner %}<th>Owner</th>{% endif %}
+      <th>Created</th>
+      <th>Last used</th>
+      <th>Expires</th>
+      <th>Status</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for token in tokens %}
+      <tr>
+        <td>{{ token.name }}</td>
+        <td><code>{{ token.prefix }}…</code></td>
+        {% if show_owner %}<td>{{ token.user.email }}</td>{% endif %}
+        <td>{{ token.created_at|date:"Y-m-d H:i" }}</td>
+        <td>{{ token.last_used_at|date:"Y-m-d H:i"|default:"never" }}</td>
+        <td>{{ token.expires_at|date:"Y-m-d H:i"|default:"never" }}</td>
+        <td>{% if token.revoked_at %}Revoked{% elif token.is_active %}Active{% else %}Expired{% endif %}</td>
+        <td>
+          {% if not token.revoked_at %}
+            <form method="post" action="{% url 'revoke_api_token' token.id %}">
+              {% csrf_token %}
+              <button type="submit" style="margin:0" onclick="return confirm('Revoke this token? Software that uses it stops working immediately.');">Revoke</button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="8">No tokens yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
