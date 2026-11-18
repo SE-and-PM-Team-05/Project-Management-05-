@@ -167,7 +167,7 @@ def test_req_func_073_api_returns_and_stores_stale(client):
     make_sync()
     user = make_user(is_request_user=True)
     client.force_login(user)
-    with mock.patch("checks.sources.vies.requests.post", return_value=vies_answer()):
+    with mock.patch("checks.sources.http.requests.post", return_value=vies_answer()):
         response = post(client, VALID_INPUT)
     check = checks_of(response)["listedAsFakeCompany"]
     assert (check["result"], check["source"], check["stale"]) == ("FALSE", "BMF", False)
