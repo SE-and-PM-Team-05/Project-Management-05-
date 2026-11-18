@@ -3,6 +3,7 @@
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+import requests
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
@@ -31,6 +32,12 @@ def last_good_copy():
         feed_timestamp=date(2026, 11, 17),
     )
     return entry, log
+
+
+class FakeResponse:
+    def __init__(self, status_code, content=b""):
+        self.status_code = status_code
+        self.content = content
 
 
 def serve(xml_bytes):
@@ -91,26 +98,51 @@ def test_req_func_072_one_log_row_per_run():
     assert SyncLog.objects.count() == 3
 
 
-@pytest.mark.parametrize(
-    ("download", "error"),
-    [
-        (fail_with("HTTP_503"), "HTTP_503"),
-        (fail_with("TIMEOUT"), "TIMEOUT"),
-        (serve(b"<html>Wartungsarbeiten</html>"), "NOT_RSS"),
-        (serve(feed(item("A GmbH", COMPANY.replace("UID-NR", "UID")))), "MARKUP_CHANGED"),
-    ],
-)
-def test_req_func_073_failed_sync_keeps_the_last_good_copy(last_good_copy, download, error):
+def assert_last_good_copy_kept(log, error, last_good_copy):
     old_entry, old_log = last_good_copy
-
-    log = sync_bmf(download=download)
-
     assert log.outcome == SyncLog.OUTCOME_FAILED
     assert log.error_message.startswith(error)
     assert log.number_of_entries == 0
     assert list(FakeCompany.objects.all()) == [old_entry]
     # The stale flag (SCRUM-66) keeps counting from the last success, not from the failed run.
     assert SyncLog.last_success(SyncLog.SOURCE_BMF) == old_log
+
+
+@pytest.mark.parametrize(
+    ("outcome", "error"),
+    [
+        (FakeResponse(503), "HTTP_503"),
+        (FakeResponse(404), "HTTP_404"),
+        (requests.Timeout(), "TIMEOUT"),
+        (requests.ConnectionError("refused"), "NETWORK_ERROR"),
+    ],
+)
+def test_req_func_073_unreachable_bmf_keeps_the_last_good_copy(last_good_copy, monkeypatch, outcome, error):
+    """The real download(): only requests.get is replaced, so the whole path from HTTP to sync log is tested."""
+
+    def get(url, timeout):
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(bmf_feed.requests, "get", get)
+
+    log = sync_bmf()
+
+    assert_last_good_copy_kept(log, error, last_good_copy)
+
+
+@pytest.mark.parametrize(
+    ("body", "error"),
+    [
+        (b"<html>Wartungsarbeiten</html>", "NOT_RSS"),
+        (feed(item("A GmbH", COMPANY.replace("UID-NR", "UID"))), "MARKUP_CHANGED"),
+    ],
+)
+def test_req_func_073_unreadable_feed_keeps_the_last_good_copy(last_good_copy, body, error):
+    log = sync_bmf(download=serve(body))
+
+    assert_last_good_copy_kept(log, error, last_good_copy)
 
 
 def test_req_rel_002_interrupted_write_leaves_the_old_list_complete(last_good_copy, monkeypatch):
@@ -149,12 +181,6 @@ def test_shorter_list_is_accepted_when_a_person_allows_it():
 
     assert log.outcome == SyncLog.OUTCOME_SUCCESS
     assert FakeCompany.objects.count() == 4
-
-
-class FakeResponse:
-    def __init__(self, status_code, content=b""):
-        self.status_code = status_code
-        self.content = content
 
 
 def test_command_imports_the_feed(monkeypatch, capsys):
