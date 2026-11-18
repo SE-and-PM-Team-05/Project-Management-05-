@@ -260,7 +260,7 @@ The count is kept on the token's database row and changed under a row lock, so i
 
 ### `POST /api/v1/checks` – check a business partner
 
-Runs the checks implemented so far, `vatValid` and `nameMatchesVat`, both answered by one call to VIES (REQ-FUNC-030…032). The other checks (fake-company list, HFU, Firmenbuch, GISA) are added in later sprints and are not in the response yet. Every accepted request is **stored** as evidence, atomically with all its results (REQ-REL-004); `requestId` is its ID. Stored requests cannot be changed, only deleted as a whole (REQ-FUNC-051). Invalid or rejected calls store nothing.
+Runs the checks implemented so far, `vatValid` and `nameMatchesVat`, both answered by one call to VIES (REQ-FUNC-030…032). The other checks (fake-company list, HFU, Firmenbuch, GISA) are added in later sprints and are not in the response yet. Every accepted request is **stored** as evidence, atomically with all its results (REQ-REL-004); `requestId` is its ID. Stored requests cannot be changed, only deleted as a whole (REQ-FUNC-051): `save()`, `QuerySet.update()` and `bulk_update()` refuse, and there is no admin page or API route that edits them. Partners are never re-checked automatically, not after a sync and not over time; a re-check is a new request (REQ-FUNC-040, REQ-FUNC-041). Invalid or rejected calls store nothing.
 
 **Authentication:** an API token or web session (see [Authentication](#authentication)) of a user with the Request User role. With a token, `requestedBy.tokenName` in the answer and in the stored request is the token's name (never its value); with a web session it is `null`.
 
@@ -356,7 +356,7 @@ Each source (VIES, BMF, HFU, later Firmenbuch and GISA) is one adapter behind a 
    - `source`: the name reported in every result, e.g. `"BMF"`; unique.
    - `checks`: the check names it answers, e.g. `("onBmfList",)`; each check belongs to one adapter only.
    - `applies_to(partner)` (optional): return `False` when the source doesn't apply, e.g. non-Austrian partners; its checks are then `NOT_APPLICABLE` (REQ-FUNC-038).
-   - `run(partner, deadline)`: return one result per check, built with `self.result(...)` or `self.unknown(...)`. Give up by `deadline` (8 s incl. one retry, REQ-INT-013) and `return self.unavailable("TIMEOUT")` or another short error code instead of raising.
+   - `run(partner, deadline)`: return one result per check, built with `self.result(...)` or `self.unknown(...)`. Give up by `deadline` (8 s incl. one retry, REQ-INT-013) and `return self.unavailable("TIMEOUT")` or another short error code instead of raising. For a web service, call it with `post_within_budget(url, deadline, ...)` from `checks/sources/http.py`: it retries a timeout, network error or HTTP 5xx once within the budget (REQ-REL-003) and raises `SourceUnavailable(code)` otherwise.
 2. Add one instance to `ADAPTERS` in `checks/sources/__init__.py`. The list order is the order of the checks in the response.
 3. Add `tests/test_checks_<source>.py` with the source mocked, and `docs/sources/<source>.md` (REQ-INT-016).
 
