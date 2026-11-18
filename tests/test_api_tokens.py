@@ -77,8 +77,10 @@ def test_user_creates_own_token_and_sees_value_once(client, anna):
     assert response["Cache-Control"] == "no-store"
     body = response.json()
     value = body["token"]
-    # 40 random bytes in URL-safe base64; without the visible 8 characters still > 256 bits (REQ-SEC-002).
-    assert len(value) == 54 and (len(value) - 8) * 6 >= 256
+    # "bpc_" marker plus 40 random bytes in URL-safe base64; the random part after the visible 8 characters
+    # still has more than 256 bits (REQ-SEC-002).
+    assert value.startswith("bpc_") and len(value) == 4 + 54
+    assert (len(value) - 8) * 6 >= 256
     assert body["prefix"] == value[:8]
     assert body["name"] == "ERP prod"
     assert body["owner"]["email"] == "anna@beispielbau.at"
@@ -171,6 +173,10 @@ def test_expiry_date_time_is_accepted(client, anna):
         ({"name": "ok", "expiresAt": "tomorrow"}, "expiresAt"),
         ({"name": "ok", "expiresAt": "2020-01-01"}, "expiresAt"),
         ({"name": "ok", "expiresAt": 20991231}, "expiresAt"),
+        # Far-future dates used to overflow into a 500 (review of PR #11).
+        ({"name": "ok", "expiresAt": "9999-12-31"}, "expiresAt"),
+        ({"name": "ok", "expiresAt": "9999-12-31T23:59:59Z"}, "expiresAt"),
+        ({"name": "ok", "expiresAt": "2101-01-01"}, "expiresAt"),
     ],
 )
 def test_invalid_input_is_rejected(client, anna, body, field):
@@ -416,3 +422,21 @@ def test_web_page_requires_login(client):
     response = client.get(reverse("api_tokens"))
     assert response.status_code == 302
     assert reverse("login") in response["Location"]
+
+
+def test_latest_allowed_expiry_is_accepted(client, anna):
+    client = api_client(client, anna)
+
+    response = post(client, {"name": "long", "expiresAt": "2100-12-31"})
+
+    assert response.status_code == 201
+
+
+def test_web_page_rejects_expiry_after_2100_without_500(client, anna):
+    client.force_login(anna)
+
+    response = client.post(reverse("api_tokens"), {"name": "x", "owner": anna.pk, "expires_on": "9999-12-31"})
+
+    assert response.status_code == 200
+    assert "expires_on" in response.context["form"].errors
+    assert not ApiToken.objects.exists()

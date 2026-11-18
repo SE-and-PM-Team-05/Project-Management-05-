@@ -68,7 +68,8 @@ class User(AbstractUser):
         super().save(*args, **kwargs)
         if not self.is_active:
             # Deactivating a user revokes all their API tokens for good; reactivating does not bring them back
-            # (REQ-FUNC-023). Deleting a user deletes the tokens through the foreign key.
+            # (REQ-FUNC-023). Deleting a user deletes the tokens through the foreign key. QuerySet.update() skips
+            # save(), so the Bearer token lookup checks user.is_active as well.
             self.api_tokens.filter(revoked_at__isnull=True).update(revoked_at=timezone.now())
 
     def __str__(self):
@@ -112,6 +113,7 @@ class ApiToken(models.Model):
     """
 
     PREFIX_LENGTH = 8
+    VALUE_MARKER = "bpc_"
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="api_tokens")
     name = models.CharField(max_length=100)
@@ -137,9 +139,9 @@ class ApiToken(models.Model):
     @classmethod
     def issue(cls, user, name, created_by, expires_at=None):
         """Create a token and return it together with its full value, which is not stored anywhere."""
-        # 40 random bytes = 320 bits, so the part after the visible 8-character prefix alone still has
-        # 272 bits (REQ-SEC-002 asks for at least 256).
-        value = secrets.token_urlsafe(40)
+        # "bpc_" lets secret scanners recognise a leaked token. 40 random bytes = 320 bits; the random part after
+        # the visible 8-character prefix alone still has 300 bits (REQ-SEC-002 asks for at least 256).
+        value = cls.VALUE_MARKER + secrets.token_urlsafe(40)
         token = cls.objects.create(
             user=user,
             name=name,

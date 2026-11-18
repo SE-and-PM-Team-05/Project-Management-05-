@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from . import lockout
 from .models import Organization, User
+from .tokens import LATEST_EXPIRY_DATE
 from .validators import normalize_vat_number, validate_vat_number
 
 
@@ -193,4 +194,6 @@ class ApiTokenForm(forms.Form):
         day = self.cleaned_data["expires_on"]
         if day and day < timezone.localdate():
             raise forms.ValidationError("The expiry date must not be in the past.")
+        if day and day > LATEST_EXPIRY_DATE:
+            raise forms.ValidationError(f"The expiry date must be in {LATEST_EXPIRY_DATE.year} or earlier.")
         return day

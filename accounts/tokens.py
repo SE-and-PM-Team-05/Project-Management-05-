@@ -4,7 +4,7 @@ Shared by the web page (accounts/views_tokens.py) and the API (accounts/api.py),
 every user of an organization manages their own tokens, an Org Admin manages all tokens of the organization.
 """
 
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 from django.utils import timezone
 
@@ -29,6 +29,11 @@ def possible_owners(user):
     if user.is_org_admin:
         return User.objects.filter(organization_id=user.organization_id, is_active=True).order_by("email")
     return User.objects.filter(pk=user.pk)
+
+
+# Later expiry dates are refused: they mean "never" anyway, which is the default, and the year 9999 would overflow
+# when the end of the day is computed.
+LATEST_EXPIRY_DATE = date(2100, 12, 31)
 
 
 def end_of_day(day):

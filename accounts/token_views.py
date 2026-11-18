@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponseForbidden
 from django.shortcuts import redirect, render
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
 from .forms import ApiTokenForm
@@ -14,7 +15,7 @@ from .tokens import can_manage_tokens, end_of_day, possible_owners, visible_toke
 @login_required
 def api_tokens(request):
     if not can_manage_tokens(request.user):
-        return HttpResponseForbidden("Only users of an organization have API tokens.")
+        return HttpResponseForbidden(_("Only users of an organization have API tokens."))
 
     owners = possible_owners(request.user)
     form = ApiTokenForm(request.POST or None, owners=owners, initial={"owner": request.user})
@@ -48,10 +49,12 @@ def api_tokens(request):
 @require_POST
 def revoke_api_token(request, token_id):
     if not can_manage_tokens(request.user):
-        return HttpResponseForbidden("Only users of an organization have API tokens.")
+        return HttpResponseForbidden(_("Only users of an organization have API tokens."))
     token = visible_tokens(request.user).filter(pk=token_id).first()
     if token is None:
         raise Http404
     token.revoke()
-    messages.success(request, f"Token “{token.name}” revoked. Calls with it are rejected from now on.")
+    messages.success(
+        request, _("Token “%(name)s” revoked. Calls with it are rejected from now on.") % {"name": token.name}
+    )
     return redirect("api_tokens")

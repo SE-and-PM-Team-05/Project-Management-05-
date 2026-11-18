@@ -17,7 +17,7 @@ from checks.results import format_utc
 from checks.views import api_error, csrf_failure
 
 from .models import ApiToken
-from .tokens import can_manage_tokens, end_of_day, possible_owners, visible_tokens
+from .tokens import LATEST_EXPIRY_DATE, can_manage_tokens, end_of_day, possible_owners, visible_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -101,11 +101,13 @@ def create_token(request):
 
     expires_at = data.get("expiresAt")
     if expires_at is not None:
-        expires_at = parse_expiry(expires_at)
-        if expires_at is None:
-            errors["expiresAt"] = [_("Use an ISO 8601 date or date and time.")]
-        elif expires_at <= timezone.now():
-            errors["expiresAt"] = [_("The expiry must be in the future.")]
+        try:
+            expires_at = parse_expiry(expires_at)
+        except ValueError as error:
+            errors["expiresAt"] = [str(error)]
+        else:
+            if expires_at <= timezone.now():
+                errors["expiresAt"] = [_("The expiry must be in the future.")]
 
     if errors:
         return api_error(400, "INVALID_INPUT", _("Some fields are invalid."), errors)
@@ -119,18 +121,24 @@ def create_token(request):
 
 
 def parse_expiry(value):
-    """A date means the end of that day (Vienna time); a date and time without offset is read as UTC."""
+    """Turn expiresAt into an aware datetime, or raise ValueError with the message for the client.
+
+    A date means the end of that day (Vienna time); a date and time without offset is read as UTC.
+    """
+    invalid = ValueError(_("Use an ISO 8601 date or date and time."))
     if not isinstance(value, str):
-        return None
+        raise invalid
     try:
         day = parse_date(value)
-        if day is not None:
-            return end_of_day(day)
-        moment = parse_datetime(value)
+        moment = None if day else parse_datetime(value)
     except ValueError:
-        return None
-    if moment is None:
-        return None
+        raise invalid from None
+    if day is None and moment is None:
+        raise invalid
+    if (day or moment.date()) > LATEST_EXPIRY_DATE:
+        raise ValueError(_("The expiry must be in %(year)s or earlier.") % {"year": LATEST_EXPIRY_DATE.year})
+    if day:
+        return end_of_day(day)
     return moment if timezone.is_aware(moment) else moment.replace(tzinfo=UTC)
 
 
