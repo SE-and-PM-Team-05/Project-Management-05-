@@ -1,8 +1,18 @@
 """Stored check requests: the evidence that a partner was checked (REQ-FUNC-050, REQ-FUNC-041, REQ-FUNC-051).
 
 Stores structured records only, never documents (C7). Stored requests are immutable; they can only be
-deleted as a whole. Which further fields count as legal proof is still open (SRS OD-02); for now the
-request stores exactly what the API response shows.
+deleted as a whole. Every accepted request is stored, also when results are UNKNOWN. Where each evidence
+field of REQ-FUNC-050 (SRS OD-02) is kept:
+
+- request ID, organization, requesting user, channel, token name: CheckRequest.id, .organization,
+  .requested_by / .requested_by_name, .channel, .token_name
+- input: CheckRequest.vat_number, .company_name, .company_register_number, .address,
+  .required_license_codes, .reference
+- received/completed timestamps: CheckRequest.received_at, .completed_at (UTC)
+- all results with details: one CheckRequestResult per check (result, reason, source, details)
+- sync timestamps of the lists used: CheckRequestResult.data_timestamp, which for a list source (BMF, HFU)
+  is the time of the sync that the result is based on (SRS 3.2.4, Appendix B)
+- references the source returns: CheckRequestResult.details, e.g. details.requestIdentifier from VIES
 """
 
 import uuid
@@ -15,12 +25,27 @@ from accounts.models import Organization
 from .results import NOT_APPLICABLE, format_utc
 
 
+class ImmutableQuerySet(models.QuerySet):
+    """Blocks the two QuerySet methods that write to the database without calling save() (REQ-FUNC-051).
+
+    Related managers (request.results) use this QuerySet too. Deleting stays possible.
+    """
+
+    def update(self, **kwargs):
+        raise ValueError(f"Stored {self.model.__name__} records cannot be changed.")
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        raise ValueError(f"Stored {self.model.__name__} records cannot be changed.")
+
+
 class ImmutableModel(models.Model):
     """Can be created and deleted, but never changed after it was saved (REQ-FUNC-051).
 
-    Only save() is guarded. QuerySet.update() and bulk_update() bypass it and would change stored
-    evidence, so never use them on these models.
+    save() refuses existing records, and the manager refuses update() and bulk_update(). Raw SQL is not
+    guarded. On purpose there is no admin, form or API endpoint that edits these models (SCRUM-62).
     """
+
+    objects = ImmutableQuerySet.as_manager()
 
     class Meta:
         abstract = True

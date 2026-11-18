@@ -34,6 +34,7 @@ class ForcePasswordChangeMiddleware:
 
 class ApiTokenMiddleware:
     """Authenticate API calls that send `Authorization: Bearer <token>` and limit their rate (SCRUM-71, SCRUM-73).
+    """Authenticate API calls that send `Authorization: Bearer <token>` (REQ-INT-011, SCRUM-71).
 
     Only paths under /api/ accept tokens; a token never logs anybody into the web pages. If the header is present, it
     decides alone: a bad token is 401 even if the caller also has a web session. With a valid token, request.user is
@@ -60,6 +61,11 @@ class ApiTokenMiddleware:
             logger.exception("Token authentication failed")
             return api_error(500, "INTERNAL_ERROR", _("Something went wrong on our side. Please try again later."))
         if authenticated is None:
+            token = authenticate_token(value) if value else None
+        except Exception:
+            logger.exception("Token authentication failed")
+            return api_error(500, "INTERNAL_ERROR", _("Something went wrong on our side. Please try again later."))
+        if token is None:
             response = api_error(401, "INVALID_TOKEN", _("The API token is missing, unknown, revoked or expired."))
             response["WWW-Authenticate"] = 'Bearer error="invalid_token"'
             return response
@@ -80,3 +86,6 @@ class ApiTokenMiddleware:
         response["X-RateLimit-Remaining"] = str(quota.remaining)
         response["X-RateLimit-Reset"] = str(quota.reset_seconds)
         return response
+        request.user = token.user
+        request.api_token = token
+        return self.get_response(request)

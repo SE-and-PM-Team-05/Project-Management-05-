@@ -80,7 +80,8 @@ def _create_check(request):
         # Invalid input is rejected before any source is called (REQ-FUNC-030).
         return api_error(400, "INVALID_INPUT", _("Some fields are invalid."), error.message_dict)
 
-    # The HFU service needs the requesting organization's VAT number (REQ-FUNC-034).
+    # The organization's own VAT number: the HFU service needs it (REQ-FUNC-034), and it lets VIES return a
+    # reference number (REQ-FUNC-050).
     partner = replace(partner, requesting_organization_vat_number=user.organization.vat_number)
     checks = run_checks(partner)
     token = getattr(request, "api_token", None)
