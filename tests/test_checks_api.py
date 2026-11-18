@@ -1,6 +1,7 @@
 """SCRUM-24: POST /api/v1/checks. VIES is always mocked; no test calls the real service."""
 
 import re
+from datetime import timedelta
 from unittest import mock
 
 import pytest
@@ -16,6 +17,8 @@ from checks.sources.vies import ViesAdapter
 
 URL = "/api/v1/checks"
 VALID_INPUT = {"vatNumber": "atu 123.456-78", "companyName": "Muster Bau GmbH"}
+# The request user's organization (make_user) is sent to VIES as requester (REQ-FUNC-050).
+REQUESTER = {"requesterMemberStateCode": "AT", "requesterNumber": "U99999999"}
 ISO_UTC = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
 
 
@@ -120,7 +123,7 @@ def test_req_func_031_032_valid_vat_and_matching_name(api, vies):
 
 def test_req_func_030_vat_number_is_normalized_before_vies(api, vies):
     post(api, VALID_INPUT)
-    assert vies.call_args.kwargs["json"] == {"countryCode": "AT", "vatNumber": "U12345678"}
+    assert vies.call_args.kwargs["json"] == {"countryCode": "AT", "vatNumber": "U12345678", **REQUESTER}
 
 
 def test_req_func_031_invalid_vat_returns_false(api, vies):
@@ -197,7 +200,7 @@ def test_req_int_012_body_that_is_not_a_json_object_returns_400(api, vies, body)
 def test_req_func_031_other_eu_number_is_accepted(api, vies, hfu):
     response = post(api, {"vatNumber": "EL123456789", "companyName": "Ellas AE"})
     assert response.status_code == 200
-    assert vies.call_args.kwargs["json"] == {"countryCode": "EL", "vatNumber": "123456789"}
+    assert vies.call_args.kwargs["json"] == {"countryCode": "EL", "vatNumber": "123456789", **REQUESTER}
     # HFU is asked by Austrian VAT number only (REQ-FUNC-038).
     assert checks_of(response)["onHfuList"]["result"] == "NOT_APPLICABLE"
     hfu.assert_not_called()
@@ -314,6 +317,75 @@ def test_scrum_60_failing_source_still_returns_200_and_the_request_is_stored(api
         ("nameMatchesVat", "TRUE"),
         ("failingCheck", "UNKNOWN"),
     ]
+
+
+# --- Evidence fields (SCRUM-61, REQ-FUNC-050) ---
+
+
+def test_req_func_050_all_evidence_fields_are_stored_for_an_unknown_request(api, vies, request_user):
+    """The acceptance test of REQ-FUNC-050: every field is in the database, also when results are UNKNOWN."""
+    vies.side_effect = requests.ConnectionError()
+    data = {
+        **VALID_INPUT,
+        "companyRegisterNumber": "FN 123456a",
+        "address": "Ringstraße 1, 3500 Krems",
+        "requiredLicenseCodes": ["BAUMEISTER"],
+        "reference": "PO-4711",
+    }
+    response = post(api, data)
+    assert response.status_code == 200
+    stored = CheckRequest.objects.get(pk=response.json()["requestId"])
+
+    assert stored.organization == request_user.organization
+    assert stored.requested_by == request_user
+    assert stored.requested_by_name == "Anna Beispiel"
+    assert stored.channel == CheckRequest.CHANNEL_API
+    assert stored.token_name == ""  # web session; a Bearer call stores the token's name (SCRUM-71)
+    assert (stored.vat_number, stored.company_name) == ("ATU12345678", "Muster Bau GmbH")
+    assert stored.company_register_number == "123456a"
+    assert stored.address == "Ringstraße 1, 3500 Krems"
+    assert stored.required_license_codes == ["BAUMEISTER"]
+    assert stored.reference == "PO-4711"
+    assert stored.received_at <= stored.completed_at
+    results = list(stored.results.all())
+    assert [(r.check_name, r.result, r.reason, r.source) for r in results] == [
+        ("vatValid", "UNKNOWN", "SOURCE_UNAVAILABLE", "VIES"),
+        ("nameMatchesVat", "UNKNOWN", "SOURCE_UNAVAILABLE", "VIES"),
+        ("onHfuList", "FALSE", "", "OEGK"),
+    ]
+    assert all(r.data_timestamp for r in results)
+    assert all(r.details == {"error": "NETWORK_ERROR"} for r in results if r.source == "VIES")
+
+
+def test_req_func_050_vies_reference_number_is_stored(api, vies):
+    answer = vies_answer()
+    answer.json.return_value["requestIdentifier"] = "WAPIAAAAZ1b2c3d4"
+    vies.return_value = answer
+    body = post(api, VALID_INPUT).json()
+    stored = CheckRequestResult.objects.get(request_id=body["requestId"], check_name="vatValid")
+    assert stored.details["requestIdentifier"] == "WAPIAAAAZ1b2c3d4"
+    assert checks_of_body(body)["vatValid"]["details"]["requestIdentifier"] == "WAPIAAAAZ1b2c3d4"
+
+
+def test_req_func_050_list_sync_time_is_stored_as_data_timestamp(api, vies):
+    """For a list source the result's dataTimestamp is the sync it is based on (SRS 3.2.4, Appendix B)."""
+    synced_at = timezone.now() - timedelta(hours=6)
+
+    class ListSource(SourceAdapter):
+        source = "TEST_LIST"
+        checks = ("onTestList",)
+
+        def run(self, partner, deadline):
+            return [self.result("onTestList", "FALSE", synced_at)]
+
+    with mock.patch("checks.runner.ADAPTERS", [ViesAdapter(), ListSource()]):
+        body = post(api, VALID_INPUT).json()
+    stored = CheckRequestResult.objects.get(request_id=body["requestId"], check_name="onTestList")
+    assert stored.data_timestamp == synced_at
+
+
+def checks_of_body(body):
+    return {c["check"]: c for c in body["checks"]}
 
 
 def test_req_func_041_each_check_creates_a_new_record(api, vies):
