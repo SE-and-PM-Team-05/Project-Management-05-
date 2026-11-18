@@ -13,5 +13,6 @@ urlpatterns = [
     path("healthz", healthz, name="healthz"),
     path("admin/", admin.site.urls),
     path("api/v1/", include("checks.urls")),
+    path("api/v1/", include("accounts.api_urls")),
     path("", include("accounts.urls")),
 ]

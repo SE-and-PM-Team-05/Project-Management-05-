@@ -12,7 +12,7 @@ BizPartnerCheck is a multi-tenant web service that automates the due-diligence c
 
 The Django skeleton and CI are in place (**SCRUM-17**). The app is deployed to **Render**, with the database on **Neon** and email through **Brevo** (decided in **SCRUM-42**); see [Deployment](#deployment) for the one-time setup.
 
-Organizations can register (**SCRUM-21**), and `POST /api/v1/checks` checks a VAT number and company name against VIES (**SCRUM-24**, see [API](#api)).
+Organizations can register (**SCRUM-21**), and `POST /api/v1/checks` checks a VAT number and company name against VIES (**SCRUM-24**, see [API](#api)). Users create, list and revoke API tokens on the **API tokens** page (`/tokens/`) or through `/api/v1/tokens` (**SCRUM-72**); the API does not accept them for authentication yet (**SCRUM-71**).
 
 ## Run it locally
 
@@ -240,6 +240,31 @@ fetch("/api/v1/checks", {
 ```
 
 This calls the real VIES service. The tests never do; they mock VIES. How VIES is used is documented in [docs/sources/vies.md](docs/sources/vies.md).
+
+### `/api/v1/tokens` – manage API tokens
+
+Every user of an organization manages their own tokens; an Org Admin manages all tokens of the organization (SRS Appendix A, REQ-FUNC-020…023). The same rules apply on the web page `/tokens/`. Authentication is the web session with the `X-CSRFToken` header for `POST` and `DELETE`, as above; Bearer tokens follow with SCRUM-71.
+
+| Call | Body | Answer |
+|---|---|---|
+| `GET /api/v1/tokens` | – | 200 `{"tokens": [...]}`, newest first, revoked ones included |
+| `POST /api/v1/tokens` | `name` (required, ≤ 100 characters), `userId` (optional, Org Admin only), `expiresAt` (optional: a date means the end of that day, Vienna time; or an ISO 8601 date and time) | 201 with the token **and its full value in `token`** |
+| `DELETE /api/v1/tokens/{id}` | – | 204; revoking twice is harmless |
+
+```json
+{
+  "id": 7, "name": "ERP prod", "prefix": "bpc_q3V9",
+  "owner": { "id": 4, "email": "anna@beispielbau.at", "name": "Anna Beispiel" },
+  "createdAt": "2026-11-16T09:00:00Z", "lastUsedAt": null, "expiresAt": null, "revokedAt": null,
+  "active": true,
+  "token": "bpc_q3V9xL0a…"
+}
+```
+
+- The value starts with `bpc_`, so secret scanners can recognise a leaked token, followed by 320 random bits (still 300 after the visible first 8 characters); it is stored only as a SHA-256 hash (REQ-SEC-002). `token` appears **only in the `POST` answer**; afterwards no page or response shows more than the first 8 characters (`prefix`, REQ-FUNC-022).
+- Tokens never expire unless `expiresAt` is set; it must lie in the future and in 2100 or earlier. Revoking is final.
+- Deactivating a user revokes all their tokens; reactivating does not bring them back. Deleting a user deletes their tokens (REQ-FUNC-023).
+- Errors use the same format and codes as `/api/v1/checks`, plus `404 NOT_FOUND` for a token of another user (unless you are Org Admin) or of another organization (REQ-FUNC-013). Creating a token for another user without the Org Admin role is `403 PERMISSION_DENIED`; the Super Admin has no organization and gets 403.
 
 ### Adding a data source
 
