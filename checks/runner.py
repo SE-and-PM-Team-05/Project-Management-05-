@@ -1,4 +1,8 @@
-"""Runs all source adapters for one partner, in parallel and within the time budget."""
+"""Runs all registered source adapters for one partner, in parallel and within the time budget.
+
+Only knows the SourceAdapter interface, so adding or changing a source never touches this module
+(REQ-MAINT-003).
+"""
 
 import logging
 import time
@@ -37,14 +41,43 @@ def run_checks(partner, adapters=None):
         if future is None:
             results += [CheckResult(name, NOT_APPLICABLE, adapter.source) for name in adapter.checks]
         elif future.done() and future.exception() is None:
-            results += future.result()
+            results += _checked(adapter, future.result(), started_at)
         else:
             if future.done():
                 logger.error("Source %s failed", adapter.source, exc_info=future.exception())
             else:
                 logger.warning("Source %s exceeded the %s s budget", adapter.source, SOURCE_TIME_BUDGET)
-            results += [
-                CheckResult(name, UNKNOWN, adapter.source, started_at, reason=SOURCE_UNAVAILABLE)
-                for name in adapter.checks
-            ]
+            results += _unavailable(adapter, started_at)
     return results
+
+
+def _unavailable(adapter, started_at):
+    """UNKNOWN / SOURCE_UNAVAILABLE for every check of an adapter that failed or overran its budget.
+
+    Built here and not by the adapter: no adapter code may run on the failure path, so a faulty or
+    differently written adapter can never turn its own failure into an error of the whole request.
+    """
+    return [
+        CheckResult(name, UNKNOWN, adapter.source, started_at, reason=SOURCE_UNAVAILABLE) for name in adapter.checks
+    ]
+
+
+def _checked(adapter, returned, started_at):
+    """Hold an adapter to its declared checks (REQ-MAINT-003), so a faulty adapter can't touch the others.
+
+    Returns exactly one result per name in `adapter.checks`, in that order: a result for a check the adapter
+    did not declare, or with another source name, is dropped, and a declared check without a result becomes
+    UNKNOWN / SOURCE_UNAVAILABLE.
+    """
+    by_check = {}
+    for result in returned or ():
+        if not (isinstance(result, CheckResult) and result.check in adapter.checks and result.source == adapter.source):
+            logger.error("Source %s returned a result it does not own: %r", adapter.source, result)
+        elif result.check in by_check:
+            logger.error("Source %s returned %s twice; keeping the first", adapter.source, result.check)
+        else:
+            by_check[result.check] = result
+    missing = [name for name in adapter.checks if name not in by_check]
+    if missing:
+        logger.error("Source %s returned no result for %s", adapter.source, ", ".join(missing))
+    return [by_check.get(fallback.check, fallback) for fallback in _unavailable(adapter, started_at)]
