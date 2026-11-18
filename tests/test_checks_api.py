@@ -463,7 +463,7 @@ def test_req_func_051_queryset_update_and_bulk_update_are_blocked(api, vies):
         CheckRequestResult.objects.bulk_update(results, ["result"])
     stored.refresh_from_db()
     assert stored.company_name == "Muster Bau GmbH"
-    assert [r.result for r in stored.results.all()] == ["TRUE", "TRUE"]
+    assert [r.result for r in stored.results.all()] == ["TRUE", "TRUE", "FALSE"]  # vatValid, nameMatchesVat, onHfuList
 
 
 @pytest.mark.parametrize("model", [CheckRequest, CheckRequestResult])
@@ -517,7 +517,7 @@ def test_req_func_040_advancing_time_creates_no_new_result(api, vies):
 
     assert after == before
     assert CheckRequest.objects.count() == 1
-    assert CheckRequestResult.objects.count() == 2
+    assert CheckRequestResult.objects.count() == 3  # VIES (2) + HFU
     assert vies.call_count == 1
 
 
