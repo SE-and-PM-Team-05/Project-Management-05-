@@ -4,7 +4,7 @@ Team 05 · Software Engineering and Project Management · IMC Krems · Practical
 
 BizPartnerCheck is a multi-tenant web service that automates the due-diligence checks an Austrian construction company must run before contracting a business partner (VAT number, fake-company list, HFU list, company register, business licenses) and stores every check as evidence.
 
-- **Requirements:** [SRS v2.7](docs/SRS.md) (combined team version); changes follow REQ-CM-001 and are recorded in its Revision History
+- **Requirements:** [SRS v2.6](docs/SRS.md) (combined team version); changes follow REQ-CM-001 and are recorded in its Revision History
 - **Backlog:** Jira project [SCRUM](https://sepmimc.atlassian.net/jira/software/projects/SCRUM/boards/1)
 - **AI agent instructions:** [AGENTS.md](AGENTS.md)
 
@@ -12,7 +12,7 @@ BizPartnerCheck is a multi-tenant web service that automates the due-diligence c
 
 The Django skeleton and CI are in place (**SCRUM-17**). The app is deployed to **Render**, with the database on **Neon** and email through **Brevo** (decided in **SCRUM-42**); see [Deployment](#deployment) for the one-time setup.
 
-Organizations can register (**SCRUM-21**), and `POST /api/v1/checks` checks a VAT number and company name against VIES (**SCRUM-24**, see [API](#api)). Users create, list and revoke API tokens on the **API tokens** page (`/tokens/`) or through `/api/v1/tokens` (**SCRUM-72**), and every API call can authenticate with one as a Bearer token (**SCRUM-71**).
+Organizations can register (**SCRUM-21**), and `POST /api/v1/checks` checks a VAT number and company name against VIES (**SCRUM-24**, see [API](#api)). Users create, list and revoke API tokens on the **API tokens** page (`/tokens/`) or through `/api/v1/tokens` (**SCRUM-72**), and every API call can authenticate with one as a Bearer token (**SCRUM-71**), limited to 200 calls per minute per token (**SCRUM-73**).
 
 ## Run it locally
 
@@ -244,6 +244,20 @@ curl -X POST https://<your-service>.onrender.com/api/v1/checks \
   -d '{"vatNumber": "ATU12345678", "companyName": "Muster Bau GmbH"}'
 ```
 
+### Rate limit
+
+Each token may make **200 requests per minute** (REQ-SEC-003), counted over all endpoints. The minute starts with the first call after the previous minute ended. Every answer to a token call carries the remaining quota:
+
+| Header | Meaning |
+|---|---|
+| `X-RateLimit-Limit` | `200` |
+| `X-RateLimit-Remaining` | Calls left in the current minute |
+| `X-RateLimit-Reset` | Seconds until the current minute ends |
+
+The 201st call within the minute gets **429 `RATE_LIMIT_EXCEEDED`** with `Retry-After` (seconds). It is rejected before anything else happens: no check runs and nothing is stored (UC-04, 2b). Rejected calls don't count, so waiting `Retry-After` seconds is always enough. The limit is per token, not per user: a second token has its own 200. Web-session calls have no per-token limit.
+
+The count is kept on the token's database row and changed under a row lock, so it is exact even when several app processes serve the same token.
+
 ### `POST /api/v1/checks` – check a business partner
 
 Runs the checks implemented so far, `vatValid` and `nameMatchesVat`, both answered by one call to VIES (REQ-FUNC-030…032). The other checks (fake-company list, HFU, Firmenbuch, GISA) are added in later sprints and are not in the response yet. Every accepted request is **stored** as evidence, atomically with all its results (REQ-REL-004); `requestId` is its ID. Stored requests cannot be changed, only deleted as a whole (REQ-FUNC-051): `save()`, `QuerySet.update()` and `bulk_update()` refuse, and there is no admin page or API route that edits them. Partners are never re-checked automatically, not after a sync and not over time; a re-check is a new request (REQ-FUNC-040, REQ-FUNC-041). Invalid or rejected calls store nothing.
@@ -290,6 +304,7 @@ Errors return `{"error": {"code": "…", "message": "…", "fields": {…}}}`:
 | 400 | `INVALID_JSON` | Body is not JSON. |
 | 401 | `NOT_AUTHENTICATED` | No `Authorization` header and not logged in. |
 | 401 | `INVALID_TOKEN` | The Bearer token is unknown, revoked or expired, its owner is deactivated, or the header is not `Bearer <token>`. |
+| 429 | `RATE_LIMIT_EXCEEDED` | More than 200 calls in a minute with this token; see [Rate limit](#rate-limit). Nothing is stored. |
 | 403 | `PERMISSION_DENIED` | User lacks the Request User role. |
 | 403 | `CSRF_FAILED` | Session call without `X-CSRFToken` header. |
 | 405 | `METHOD_NOT_ALLOWED` | Anything other than POST. |
@@ -331,7 +346,7 @@ Every user of an organization manages their own tokens; an Org Admin manages all
 - The value starts with `bpc_`, so secret scanners can recognise a leaked token, followed by 320 random bits (still 300 after the visible first 8 characters); it is stored only as a SHA-256 hash (REQ-SEC-002). `token` appears **only in the `POST` answer**; afterwards no page or response shows more than the first 8 characters (`prefix`, REQ-FUNC-022).
 - Tokens never expire unless `expiresAt` is set; it must lie in the future and in 2100 or earlier. Revoking is final.
 - Deactivating a user revokes all their tokens; reactivating does not bring them back. Deleting a user deletes their tokens (REQ-FUNC-023).
-- Errors use the same format and codes as `/api/v1/checks`, plus `404 NOT_FOUND` for a token of another user (unless you are Org Admin) or of another organization (REQ-FUNC-013). Creating a token for another user without the Org Admin role is `403 PERMISSION_DENIED`; the Super Admin has no organization and gets 403.
+- Errors use the same format and codes as `/api/v1/checks` (including 401 `INVALID_TOKEN` and 429), plus `404 NOT_FOUND` for a token of another user (unless you are Org Admin) or of another organization (REQ-FUNC-013). Creating a token for another user without the Org Admin role is `403 PERMISSION_DENIED`; the Super Admin has no organization and gets 403.
 
 ### Adding a data source
 
