@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 from datetime import timedelta
 
 from django.contrib.auth.models import AbstractUser, BaseUserManager
@@ -62,6 +64,14 @@ class User(AbstractUser):
         super().set_password(raw_password)
         self.must_change_password = False
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if not self.is_active:
+            # Deactivating a user revokes all their API tokens for good; reactivating does not bring them back
+            # (REQ-FUNC-023). Deleting a user deletes the tokens through the foreign key. QuerySet.update() skips
+            # save(), so the Bearer token lookup checks user.is_active as well.
+            self.api_tokens.filter(revoked_at__isnull=True).update(revoked_at=timezone.now())
+
     def __str__(self):
         return self.email
 
@@ -93,3 +103,59 @@ class Invitation(models.Model):
 
     def is_valid(self):
         return self.accepted_at is None and self.revoked_at is None and timezone.now() < self.expires_at
+
+
+class ApiToken(models.Model):
+    """A named API token of one user (REQ-FUNC-020, REQ-FUNC-022, REQ-SEC-002).
+
+    Only the SHA-256 hash of the value is stored; the full value is shown once, when the token is created.
+    Afterwards only the name, the first 8 characters, the owner and the dates are visible.
+    """
+
+    PREFIX_LENGTH = 8
+    VALUE_MARKER = "bpc_"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="api_tokens")
+    name = models.CharField(max_length=100)
+    prefix = models.CharField(max_length=PREFIX_LENGTH, help_text="First 8 characters of the value.")
+    token_hash = models.CharField(max_length=64, unique=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    # Tokens never expire unless an expiry is set (REQ-FUNC-020).
+    expires_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.name} ({self.prefix}…)"
+
+    @staticmethod
+    def hash_value(value):
+        return hashlib.sha256(value.encode()).hexdigest()
+
+    @classmethod
+    def issue(cls, user, name, created_by, expires_at=None):
+        """Create a token and return it together with its full value, which is not stored anywhere."""
+        # "bpc_" lets secret scanners recognise a leaked token. 40 random bytes = 320 bits; the random part after
+        # the visible 8-character prefix alone still has 300 bits (REQ-SEC-002 asks for at least 256).
+        value = cls.VALUE_MARKER + secrets.token_urlsafe(40)
+        token = cls.objects.create(
+            user=user,
+            name=name,
+            prefix=value[: cls.PREFIX_LENGTH],
+            token_hash=cls.hash_value(value),
+            created_by=created_by,
+            expires_at=expires_at,
+        )
+        return token, value
+
+    def is_active(self):
+        return self.revoked_at is None and (self.expires_at is None or timezone.now() < self.expires_at)
+
+    def revoke(self):
+        if self.revoked_at is None:
+            self.revoked_at = timezone.now()
+            self.save(update_fields=["revoked_at"])
