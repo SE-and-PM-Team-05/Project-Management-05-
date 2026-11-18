@@ -47,7 +47,7 @@ def test_fake_company_without_vat_or_fn_is_allowed():
 
 
 def test_req_func_072_sync_log_has_all_fields():
-    log = make_log(number_of_entries=1703, feed_timestamp=datetime(2026, 11, 18, tzinfo=UTC))
+    log = make_log(number_of_entries=1703, feed_timestamp=date(2026, 11, 4))
 
     stored = SyncLog.objects.get(pk=log.pk)
     assert stored.source == "BMF"
@@ -55,7 +55,7 @@ def test_req_func_072_sync_log_has_all_fields():
     assert stored.end_time == START + timedelta(seconds=4)
     assert stored.outcome == "success"
     assert stored.number_of_entries == 1703
-    assert stored.feed_timestamp == datetime(2026, 11, 18, tzinfo=UTC)
+    assert stored.feed_timestamp == date(2026, 11, 4)
 
 
 def test_req_func_072_failed_run_is_logged_with_its_error():

@@ -159,8 +159,9 @@ class SyncLog(models.Model):
     end_time = models.DateTimeField()
     outcome = models.CharField(max_length=10, choices=[(OUTCOME_SUCCESS, "Success"), (OUTCOME_FAILED, "Failed")])
     number_of_entries = models.PositiveIntegerField(default=0)
-    # The feed's own <lastBuildDate>; empty if the run failed before it was read.
-    feed_timestamp = models.DateTimeField(null=True, blank=True)
+    # The feed's own <lastBuildDate>, which is a date without a time (docs/sources/bmf.md); empty if the run
+    # failed before it was read.
+    feed_timestamp = models.DateField(null=True, blank=True)
     error_message = models.TextField(blank=True)
 
     class Meta:
