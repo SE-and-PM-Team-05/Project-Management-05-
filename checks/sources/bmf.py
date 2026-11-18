@@ -8,7 +8,7 @@ import threading
 from datetime import timedelta
 
 from ..names import normalize_company_name
-from ..results import AMBIGUOUS_MATCH, FALSE, SOURCE_UNAVAILABLE, TRUE, UNKNOWN, CheckResult, utc_now
+from ..results import AMBIGUOUS_MATCH, FALSE, TRUE, UNKNOWN, CheckResult, utc_now
 from .base import SourceAdapter
 
 STALE_AFTER = timedelta(hours=48)
@@ -72,7 +72,7 @@ class BmfAdapter(SourceAdapter):
         try:
             last_success = SyncLog.last_success(SyncLog.SOURCE_BMF)
             if last_success is None:
-                return [CheckResult(CHECK, UNKNOWN, self.source, utc_now(), SOURCE_UNAVAILABLE, {"error": "NO_SYNC"})]
+                return self.unavailable("NO_SYNC")
             # ponytail: ~1,700 rows scanned in Python; store a normalized name column if the list grows a lot.
             entries = list(
                 FakeCompany.objects.only(
@@ -82,7 +82,17 @@ class BmfAdapter(SourceAdapter):
             result, details = find_match(partner, entries)
             reason = AMBIGUOUS_MATCH if result == UNKNOWN else None
             stale = utc_now() - last_success.end_time > STALE_AFTER
-            return [CheckResult(CHECK, result, self.source, last_success.end_time, reason, details, stale)]
+            return [
+                CheckResult(
+                    CHECK,
+                    result,
+                    self.source,
+                    data_timestamp=last_success.end_time,
+                    reason=reason,
+                    details=details,
+                    stale=stale,
+                )
+            ]
         finally:
             # Django does not close connections opened in threads it doesn't manage; the main thread keeps its own.
             if threading.current_thread() is not threading.main_thread():
