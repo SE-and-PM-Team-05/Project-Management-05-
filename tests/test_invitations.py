@@ -37,6 +37,7 @@ def org_admin(organization):
 @pytest.mark.django_db
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
 def test_org_admin_can_invite_member(client, org_admin, organization):
+    """Verifies REQ-FUNC-010, REQ-COMP-006."""
     client.force_login(org_admin)
 
     response = client.post(
@@ -75,6 +76,7 @@ def keycloak_user(email="newmember@example.com"):
 
 @pytest.mark.django_db
 def test_invited_member_can_accept_invitation(client, org_admin, organization):
+    """Verifies REQ-FUNC-010."""
     invitation_url = invite(client, org_admin)
     client.force_login(keycloak_user(email="NewMember@example.com"))
 
@@ -93,6 +95,7 @@ def test_invited_member_can_accept_invitation(client, org_admin, organization):
 
 @pytest.mark.django_db
 def test_accepting_requires_login_and_returns_to_the_invitation(client, org_admin):
+    """Verifies REQ-FUNC-002, REQ-FUNC-010."""
     invitation_url = invite(client, org_admin)
     client.logout()
 
@@ -105,6 +108,7 @@ def test_accepting_requires_login_and_returns_to_the_invitation(client, org_admi
 @pytest.mark.django_db
 @pytest.mark.parametrize("case", ["other email", "already in an organization"])
 def test_only_the_invited_email_without_organization_can_accept(client, org_admin, organization, case):
+    """Verifies REQ-FUNC-010."""
     invitation_url = invite(client, org_admin)
     if case == "other email":
         member = keycloak_user(email="someone-else@example.com")
@@ -124,6 +128,7 @@ def test_only_the_invited_email_without_organization_can_accept(client, org_admi
 
 @pytest.mark.django_db
 def test_user_without_organization_can_be_invited(client, org_admin):
+    """Verifies REQ-FUNC-010."""
     keycloak_user()
     invite(client, org_admin)
     assert Invitation.objects.filter(email="newmember@example.com").exists()
@@ -131,6 +136,7 @@ def test_user_without_organization_can_be_invited(client, org_admin):
 
 @pytest.mark.django_db
 def test_member_of_an_organization_cannot_be_invited(client, org_admin):
+    """Verifies REQ-FUNC-010."""
     client.force_login(org_admin)
     response = client.post(reverse("invite_member"), {"email": "ADMIN@example.com", "is_request_user": "on"})
     assert response.status_code == 200
@@ -139,6 +145,7 @@ def test_member_of_an_organization_cannot_be_invited(client, org_admin):
 
 @pytest.mark.django_db
 def test_expired_invitation_cannot_be_accepted(client, org_admin):
+    """Verifies REQ-FUNC-010."""
     invitation_url = invite(client, org_admin, email="expired@example.com")
     Invitation.objects.update(expires_at=timezone.now() - timedelta(days=1))
     client.force_login(keycloak_user(email="expired@example.com"))
@@ -149,6 +156,7 @@ def test_expired_invitation_cannot_be_accepted(client, org_admin):
 
 @pytest.mark.django_db
 def test_accepted_invitation_cannot_be_reused(client, org_admin):
+    """Verifies REQ-FUNC-010."""
     invitation_url = invite(client, org_admin, email="reused@example.com")
     client.force_login(keycloak_user(email="reused@example.com"))
 
@@ -158,6 +166,7 @@ def test_accepted_invitation_cannot_be_reused(client, org_admin):
 
 @pytest.mark.django_db
 def test_request_user_cannot_invite_members(client, organization):
+    """Verifies REQ-FUNC-010, REQ-FUNC-012."""
     request_user = User.objects.create_user(
         email="requester@example.com",
         password="StrongPassword123!",
@@ -184,6 +193,7 @@ def test_request_user_cannot_invite_members(client, organization):
 @pytest.mark.django_db
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
 def test_duplicate_pending_invitation_is_rejected(client, org_admin):
+    """Verifies REQ-FUNC-010."""
     client.force_login(org_admin)
 
     invitation_data = {

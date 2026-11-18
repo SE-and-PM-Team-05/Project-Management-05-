@@ -69,6 +69,7 @@ def fail_admin_logins(client, times):
 
 
 def test_login_sends_the_user_to_keycloak(client, db, settings):
+    """Verifies REQ-FUNC-003."""
     url = urlparse(client.get(reverse("oidc_authentication_init")).url)
     assert f"{url.scheme}://{url.netloc}{url.path}" == settings.OIDC_OP_AUTHORIZATION_ENDPOINT
     query = parse_qs(url.query)
@@ -77,11 +78,13 @@ def test_login_sends_the_user_to_keycloak(client, db, settings):
 
 
 def test_login_pages_link_to_keycloak(client):
+    """Verifies REQ-FUNC-003."""
     html = client.get(reverse("home")).content.decode()
     assert reverse("oidc_authentication_init") in html
 
 
 def test_existing_user_logs_in_by_email(client, user):
+    """Verifies REQ-FUNC-003."""
     response = keycloak_login(client, claims={**CLAIMS, "email": EMAIL.upper()})
     assert response.status_code == 302
     assert response.url == reverse("home")
@@ -89,6 +92,7 @@ def test_existing_user_logs_in_by_email(client, user):
 
 
 def test_first_login_creates_user_without_organization_or_password(client, db):
+    """Verifies REQ-FUNC-003."""
     keycloak_login(client)
     user = User.objects.get()
     assert (user.email, user.first_name, user.last_name) == (EMAIL, "Anna", "Muster")
@@ -99,12 +103,14 @@ def test_first_login_creates_user_without_organization_or_password(client, db):
 
 
 def test_unverified_email_is_refused(client, db):
+    """Verifies REQ-FUNC-002."""
     keycloak_login(client, claims={**CLAIMS, "email_verified": False})
     assert not is_logged_in(client)
     assert not User.objects.exists()
 
 
 def test_deactivated_member_is_refused(client, user):
+    """Verifies REQ-FUNC-003, REQ-FUNC-010."""
     user.is_active = False
     user.save()
     keycloak_login(client)
@@ -112,16 +118,19 @@ def test_deactivated_member_is_refused(client, user):
 
 
 def test_staff_account_cannot_log_in_through_keycloak(client, admin):
+    """Verifies REQ-FUNC-003."""
     keycloak_login(client, claims={**CLAIMS, "email": ADMIN_EMAIL})
     assert not is_logged_in(client)
 
 
 def test_login_returns_to_the_page_that_asked_for_it(client, user):
+    """Verifies REQ-FUNC-003."""
     response = keycloak_login(client, next_url=reverse("team_members"))
     assert response.url == reverse("team_members")
 
 
 def test_logout_also_ends_the_keycloak_session(client, user, settings):
+    """Verifies REQ-FUNC-003."""
     keycloak_login(client)
     response = client.post(reverse("oidc_logout"))
     assert response.url.startswith(settings.OIDC_OP_LOGOUT_ENDPOINT + "?")
@@ -132,6 +141,7 @@ def test_logout_also_ends_the_keycloak_session(client, user, settings):
 
 
 def test_deactivating_a_member_ends_their_open_session(client, user):
+    """Verifies REQ-FUNC-010."""
     keycloak_login(client)
     assert is_logged_in(client)
 
@@ -140,6 +150,7 @@ def test_deactivating_a_member_ends_their_open_session(client, user):
 
 
 def test_superuser_without_staff_flag_cannot_log_in_through_keycloak(client, admin):
+    """Verifies REQ-FUNC-003."""
     User.objects.filter(pk=admin.pk).update(is_staff=False)
     keycloak_login(client, claims={**CLAIMS, "email": ADMIN_EMAIL})
     assert not is_logged_in(client)
@@ -149,6 +160,7 @@ def test_superuser_without_staff_flag_cannot_log_in_through_keycloak(client, adm
 
 
 def test_password_is_stored_only_as_salted_hash(admin):
+    """Verifies REQ-SEC-002."""
     assert PASSWORD not in admin.password
     assert admin.password.startswith(("pbkdf2_sha256$", "argon2$"))
     other = User.objects.create_superuser("other@bizpartnercheck.at", PASSWORD)
@@ -156,22 +168,26 @@ def test_password_is_stored_only_as_salted_hash(admin):
 
 
 def test_admin_logs_in_with_password(client, admin):
+    """Verifies REQ-FUNC-005."""
     assert admin_login(client).status_code == 302
     assert client.get(reverse("admin:index")).status_code == 200
 
 
 def test_admin_account_locked_after_five_failures_even_with_correct_password(client, admin):
+    """Verifies REQ-SEC-004."""
     fail_admin_logins(client, 5)
     assert admin_login(client).status_code == 200
     assert not is_logged_in(client)
 
 
 def test_four_failures_do_not_lock(client, admin):
+    """Verifies REQ-SEC-004."""
     fail_admin_logins(client, 4)
     assert admin_login(client).status_code == 302
 
 
 def test_successful_login_resets_the_count(client, admin):
+    """Verifies REQ-SEC-004."""
     fail_admin_logins(client, 4)
     assert admin_login(client).status_code == 302
     client.post(reverse("admin:logout"))
@@ -181,11 +197,13 @@ def test_successful_login_resets_the_count(client, admin):
 
 
 def test_attempts_during_lock_do_not_extend_it(client, admin):
+    """Verifies REQ-SEC-004."""
     fail_admin_logins(client, 8)
     assert lockout.failed_attempts(ADMIN_EMAIL) == lockout.MAX_FAILED_ATTEMPTS
 
 
 def test_lock_ends_after_15_minutes(client, admin, monkeypatch):
+    """Verifies REQ-SEC-004."""
     fail_admin_logins(client, 5)
     assert lockout.is_locked(ADMIN_EMAIL)
 
@@ -195,12 +213,14 @@ def test_lock_ends_after_15_minutes(client, admin, monkeypatch):
 
 
 def test_lock_is_per_account_and_ignores_email_case(client, admin):
+    """Verifies REQ-SEC-004."""
     fail_admin_logins(client, 5)
     assert lockout.is_locked(ADMIN_EMAIL.upper())
     assert not lockout.is_locked("someone-else@musterbau.at")
 
 
 def test_lock_also_applies_outside_the_admin_login_page(admin, rf):
+    """Verifies REQ-SEC-004."""
     for _ in range(5):
         assert authenticate(rf.post("/"), username=ADMIN_EMAIL, password="wrong-password") is None
     assert authenticate(rf.post("/"), username=ADMIN_EMAIL, password=PASSWORD) is None
@@ -210,6 +230,7 @@ def test_lock_also_applies_outside_the_admin_login_page(admin, rf):
 
 
 def test_session_ends_after_8_hours_of_inactivity_and_is_renewed(client, user, settings):
+    """Verifies REQ-SEC-006."""
     assert settings.SESSION_COOKIE_AGE == 8 * 60 * 60
     assert settings.SESSION_SAVE_EVERY_REQUEST
     keycloak_login(client)
@@ -220,6 +241,7 @@ def test_session_ends_after_8_hours_of_inactivity_and_is_renewed(client, user, s
 
 
 def test_session_cookie_flags(client, user, settings):
+    """Verifies REQ-SEC-006."""
     cookie = keycloak_login(client).cookies[settings.SESSION_COOKIE_NAME]
     assert cookie["httponly"]
     assert cookie["samesite"] == "Lax"
@@ -229,6 +251,7 @@ def test_session_cookie_flags(client, user, settings):
 
 
 def test_logout_is_protected_against_csrf(user):
+    """Verifies REQ-SEC-006."""
     client = Client(enforce_csrf_checks=True)
     client.force_login(user)
     assert client.post(reverse("oidc_logout")).status_code == 403

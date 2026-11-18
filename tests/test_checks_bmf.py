@@ -35,6 +35,7 @@ def make_entry(**fields):
 
 
 def test_req_func_033_vat_match_is_true_with_details(db):
+    """Verifies REQ-FUNC-033."""
     sync = make_sync()
     make_entry(vat_number="ATU12345678", company_register_number="123456a", address="Hauptstraße 1, 1010 Wien")
     result = run(PARTNER)
@@ -51,6 +52,7 @@ def test_req_func_033_vat_match_is_true_with_details(db):
 
 
 def test_req_func_033_empty_fields_are_left_out_of_the_details(db):
+    """Verifies REQ-FUNC-033."""
     make_sync()
     make_entry(vat_number="ATU12345678")
     assert run(PARTNER).details == {
@@ -62,6 +64,7 @@ def test_req_func_033_empty_fields_are_left_out_of_the_details(db):
 
 
 def test_req_func_033_fn_match_ignores_case_spaces_and_prefix_when_vat_differs(db):
+    """Verifies REQ-FUNC-033."""
     make_sync()
     make_entry(vat_number="ATU99999999", company_register_number="FN 123456 A")
     partner = Partner(vat_number="ATU12345678", company_name="Anders GmbH", company_register_number="123456a")
@@ -71,6 +74,7 @@ def test_req_func_033_fn_match_ignores_case_spaces_and_prefix_when_vat_differs(d
 
 
 def test_req_func_033_name_only_match_is_ambiguous(db):
+    """Verifies REQ-FUNC-033."""
     make_sync()
     make_entry(name="Schein Bau GmbH", vat_number="ATU99999999")
     result = run(Partner(vat_number="ATU12345678", company_name="Schein-Bau G.m.b.H."))
@@ -84,6 +88,7 @@ def test_req_func_033_name_only_match_is_ambiguous(db):
 
 
 def test_req_func_033_no_match_is_false(db):
+    """Verifies REQ-FUNC-033."""
     make_sync()
     make_entry(vat_number="ATU99999999", company_register_number="999999z")
     result = run(PARTNER)
@@ -91,6 +96,7 @@ def test_req_func_033_no_match_is_false(db):
 
 
 def test_req_func_033_no_sync_yet_is_unknown_source_unavailable(db):
+    """Verifies REQ-FUNC-033."""
     make_entry(vat_number="ATU12345678")
     result = run(PARTNER)
     assert (result.result, result.reason, result.details) == ("UNKNOWN", "SOURCE_UNAVAILABLE", {"error": "NO_SYNC"})
@@ -98,6 +104,7 @@ def test_req_func_033_no_sync_yet_is_unknown_source_unavailable(db):
 
 
 def test_req_func_073_failed_newer_sync_keeps_using_the_last_success(db):
+    """Verifies REQ-FUNC-073."""
     success = make_sync(age=timedelta(hours=30))
     make_sync(age=timedelta(hours=6), outcome=SyncLog.OUTCOME_FAILED)
     make_entry(vat_number="ATU12345678")
@@ -112,6 +119,7 @@ def test_req_func_073_failed_newer_sync_keeps_using_the_last_success(db):
 
 @pytest.mark.parametrize(("hours", "stale"), [(47, False), (49, True)])
 def test_req_func_073_stale_after_48_hours(db, hours, stale):
+    """Verifies REQ-FUNC-073."""
     make_sync(age=timedelta(hours=hours))
     assert run(PARTNER).stale is stale
 
@@ -124,6 +132,7 @@ def test_req_func_073_stale_after_48_hours(db, hours, stale):
     [("DE123456789", "", False), ("ATU12345678", "", True), ("DE123456789", "123456a", True)],
 )
 def test_req_func_038_only_austrian_partners_are_checked(vat, fn, expected):
+    """Verifies REQ-FUNC-038."""
     assert BmfAdapter().applies_to(Partner(vat, "X GmbH", fn)) is expected
 
 
@@ -131,6 +140,7 @@ def test_req_func_038_only_austrian_partners_are_checked(vat, fn, expected):
 
 
 def test_req_perf_002_name_lookup_in_2000_entries_takes_under_half_a_second(db):
+    """Verifies REQ-PERF-002."""
     make_sync()
     FakeCompany.objects.bulk_create(
         FakeCompany(name=f"Firma {i} GmbH", vat_number=f"ATU{i:08d}", date_listed=date(2026, 11, 4))
@@ -146,6 +156,7 @@ def test_req_perf_002_name_lookup_in_2000_entries_takes_under_half_a_second(db):
 
 
 def test_req_func_073_to_json_has_stale_after_the_timestamp_only_when_set():
+    """Verifies REQ-FUNC-073."""
     moment = datetime(2026, 11, 18, 3, 0, 4, tzinfo=UTC)
     with_stale = CheckResult("listedAsFakeCompany", "FALSE", "BMF", moment, stale=False).to_json()
     assert with_stale == {
@@ -164,6 +175,7 @@ def test_req_func_073_to_json_has_stale_after_the_timestamp_only_when_set():
 
 @pytest.mark.django_db(transaction=True)
 def test_req_func_073_api_returns_and_stores_stale(client):
+    """Verifies REQ-FUNC-073."""
     make_sync()
     user = make_user(is_request_user=True)
     client.force_login(user)

@@ -86,10 +86,12 @@ def use_up(token, seconds_ago=0):
 
 
 def test_limit_is_200_per_minute():
+    """Verifies REQ-SEC-003."""
     assert RATE_LIMIT == 200
 
 
 def test_201st_request_within_a_minute_gets_429_with_retry_after(api, anna_token):
+    """Verifies REQ-SEC-003."""
     _, value = anna_token
 
     for i in range(RATE_LIMIT):
@@ -107,6 +109,7 @@ def test_201st_request_within_a_minute_gets_429_with_retry_after(api, anna_token
 
 
 def test_quota_headers_on_every_token_call(api, vies, anna_token):
+    """Verifies REQ-SEC-003."""
     _, value = anna_token
 
     response = start_check(api, value)
@@ -119,6 +122,7 @@ def test_quota_headers_on_every_token_call(api, vies, anna_token):
 
 
 def test_rejected_check_is_not_run_and_not_stored(api, vies, anna_token):
+    """Verifies REQ-SEC-003."""
     token, value = anna_token
     use_up(token)
 
@@ -130,6 +134,7 @@ def test_rejected_check_is_not_run_and_not_stored(api, vies, anna_token):
 
 
 def test_retry_after_counts_down_to_the_end_of_the_window(api, anna_token):
+    """Verifies REQ-SEC-003."""
     token, value = anna_token
     use_up(token, seconds_ago=50)
 
@@ -141,6 +146,7 @@ def test_retry_after_counts_down_to_the_end_of_the_window(api, anna_token):
 
 
 def test_new_window_starts_after_a_minute(api, anna_token):
+    """Verifies REQ-SEC-003."""
     token, value = anna_token
     use_up(token, seconds_ago=61)
 
@@ -151,6 +157,7 @@ def test_new_window_starts_after_a_minute(api, anna_token):
 
 
 def test_rejected_calls_are_not_counted_and_do_not_change_last_use(api, anna_token):
+    """Verifies REQ-SEC-003."""
     token, value = anna_token
     use_up(token)
     token.refresh_from_db()
@@ -165,6 +172,7 @@ def test_rejected_calls_are_not_counted_and_do_not_change_last_use(api, anna_tok
 
 
 def test_limit_is_per_token(api, vies, anna, anna_token):
+    """Verifies REQ-SEC-003."""
     token, value = anna_token
     use_up(token)
     _, other_value = ApiToken.issue(anna, "Second system", created_by=anna)
@@ -176,6 +184,7 @@ def test_limit_is_per_token(api, vies, anna, anna_token):
 
 
 def test_invalid_token_is_401_not_429(api, anna_token):
+    """Verifies REQ-SEC-003, REQ-INT-011."""
     token, value = anna_token
     use_up(token)
     token.revoke()
@@ -187,6 +196,7 @@ def test_invalid_token_is_401_not_429(api, anna_token):
 
 
 def test_web_session_calls_are_not_limited_per_token(client, vies, anna):
+    """Verifies REQ-SEC-003."""
     client.force_login(anna)
 
     response = client.post(CHECKS_URL, json.dumps(VALID_INPUT), content_type="application/json")
@@ -197,7 +207,7 @@ def test_web_session_calls_are_not_limited_per_token(client, vies, anna):
 
 @pytest.mark.django_db(transaction=True)
 def test_req_sec_003_limit_holds_under_parallel_calls(anna_token):
-    """210 calls from 10 threads at once: exactly 200 succeed and 10 get 429.
+    """REQ-SEC-003: 210 calls from 10 threads at once: exactly 200 succeed and 10 get 429.
 
     Each thread has its own database connection, like separate gunicorn workers, so this shows that the row lock in
     accounts.api_auth counts every call exactly once. transaction=True lets the threads see the committed token.

@@ -24,6 +24,7 @@ def make_log(outcome=SyncLog.OUTCOME_SUCCESS, start=START, **fields):
 
 
 def test_fake_company_stores_the_matching_fields():
+    """Verifies REQ-FUNC-033, REQ-FUNC-070."""
     entry = FakeCompany.objects.create(
         name="Schein Bau GmbH",
         vat_number="ATU12345678",
@@ -40,6 +41,7 @@ def test_fake_company_stores_the_matching_fields():
 
 def test_fake_company_without_vat_or_fn_is_allowed():
     # 11 % of the feed's entries have neither; they can only be matched by name (docs/sources/bmf.md).
+    """Verifies REQ-FUNC-033."""
     entry = FakeCompany.objects.create(name="Max Muster", date_listed=date(2026, 11, 4))
 
     assert entry.vat_number == ""
@@ -47,6 +49,7 @@ def test_fake_company_without_vat_or_fn_is_allowed():
 
 
 def test_req_func_072_sync_log_has_all_fields():
+    """Verifies REQ-FUNC-072."""
     log = make_log(number_of_entries=1703, feed_timestamp=date(2026, 11, 4))
 
     stored = SyncLog.objects.get(pk=log.pk)
@@ -59,6 +62,7 @@ def test_req_func_072_sync_log_has_all_fields():
 
 
 def test_req_func_072_failed_run_is_logged_with_its_error():
+    """Verifies REQ-FUNC-072."""
     log = make_log(outcome=SyncLog.OUTCOME_FAILED, error_message="HTTP_503")
 
     assert log.feed_timestamp is None
@@ -67,6 +71,7 @@ def test_req_func_072_failed_run_is_logged_with_its_error():
 
 
 def test_sync_log_lists_newest_run_first():
+    """Verifies REQ-FUNC-072."""
     older = make_log(start=START - timedelta(days=1))
     newer = make_log()
 
@@ -74,6 +79,7 @@ def test_sync_log_lists_newest_run_first():
 
 
 def test_last_success_ignores_failed_runs():
+    """Verifies REQ-FUNC-073."""
     success = make_log(start=START - timedelta(days=1))
     make_log(outcome=SyncLog.OUTCOME_FAILED)
 
@@ -81,10 +87,12 @@ def test_last_success_ignores_failed_runs():
 
 
 def test_last_success_is_none_before_the_first_sync():
+    """Verifies REQ-FUNC-073."""
     assert SyncLog.last_success(SyncLog.SOURCE_BMF) is None
 
 
 def test_req_func_072_organization_users_cannot_open_the_sync_log(client):
+    """Verifies REQ-FUNC-072."""
     org = Organization.objects.create(
         name="Beispiel Bau GmbH",
         address="Hauptstraße 1",
@@ -103,6 +111,7 @@ def test_req_func_072_organization_users_cannot_open_the_sync_log(client):
 
 @pytest.mark.parametrize("model", ["synclog", "fakecompany"])
 def test_req_func_072_operator_can_view_but_not_change(client, model):
+    """Verifies REQ-FUNC-072."""
     log = make_log()
     entry = FakeCompany.objects.create(name="Schein Bau GmbH", date_listed=date(2026, 11, 4))
     client.force_login(User.objects.create_superuser("root@example.com", "x"))

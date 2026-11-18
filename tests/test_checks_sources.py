@@ -41,12 +41,13 @@ def adapter(source, checks, run=None):
 
 
 def test_req_maint_003_registry_holds_the_vies_adapter():
+    """Verifies REQ-MAINT-003."""
     assert any(isinstance(a, ViesAdapter) for a in ADAPTERS)
     assert validate(ADAPTERS) == ADAPTERS
 
 
 def test_req_maint_003_adding_a_test_source_needs_only_its_module_and_the_registry():
-    """Acceptance test of REQ-MAINT-003: the runner and VIES stay as they are."""
+    """REQ-MAINT-003: Acceptance test of REQ-MAINT-003: the runner and VIES stay as they are."""
     registry = validate([ViesAdapter(), ListedAdapter()])
     with mock.patch(
         "checks.sources.vies.query_vies", return_value=({"valid": True, "name": "Muster Bau GmbH"}, utc_now())
@@ -60,11 +61,13 @@ def test_req_maint_003_adding_a_test_source_needs_only_its_module_and_the_regist
 
 
 def test_req_maint_003_same_source_twice_is_rejected():
+    """Verifies REQ-MAINT-003."""
     with pytest.raises(RegistryError, match="registered twice"):
         validate([adapter("A", ("one",)), adapter("A", ("two",))])
 
 
 def test_req_maint_003_check_answered_by_two_sources_is_rejected():
+    """Verifies REQ-MAINT-003."""
     with pytest.raises(RegistryError, match="answered by both"):
         validate([adapter("A", ("vatValid",)), adapter("B", ("vatValid",))])
 
@@ -75,12 +78,13 @@ def test_req_maint_003_check_answered_by_two_sources_is_rejected():
     ids=["no source name", "no checks", "checks as a string", "not an adapter"],
 )
 def test_req_maint_003_adapter_breaking_the_interface_is_rejected(bad):
+    """Verifies REQ-MAINT-003."""
     with pytest.raises(RegistryError):
         validate([bad])
 
 
 def test_req_maint_003_adapters_work_without_django():
-    """Importing and running the adapters must not load Django (REQ-MAINT-003)."""
+    """REQ-MAINT-003: Importing and running the adapters must not load Django (REQ-MAINT-003)."""
     code = (
         "import sys, time\n"
         "from checks.results import Partner\n"
@@ -95,6 +99,7 @@ def test_req_maint_003_adapters_work_without_django():
 
 
 def test_unavailable_reports_every_check_of_the_source():
+    """Verifies REQ-FUNC-039, REQ-REL-001."""
     results = adapter("A", ("one", "two")).unavailable("TIMEOUT")
     assert [(r.check, r.result, r.reason, r.source, r.details) for r in results] == [
         ("one", "UNKNOWN", "SOURCE_UNAVAILABLE", "A", {"error": "TIMEOUT"}),
@@ -104,6 +109,7 @@ def test_unavailable_reports_every_check_of_the_source():
 
 
 def test_base_run_must_be_implemented():
+    """Verifies REQ-MAINT-003."""
     with pytest.raises(NotImplementedError):
         SourceAdapter().run(PARTNER, time.monotonic() + 1)
 
@@ -112,6 +118,7 @@ def test_base_run_must_be_implemented():
 
 
 def test_req_func_039_missing_result_becomes_unknown():
+    """Verifies REQ-FUNC-039."""
     lazy = adapter("A", ("one", "two"), run=lambda self, p, d: [self.result("one", TRUE, utc_now())])
     results = runner.run_checks(PARTNER, adapters=[lazy])
     assert [(r.check, r.result, r.reason) for r in results] == [
@@ -121,6 +128,8 @@ def test_req_func_039_missing_result_becomes_unknown():
 
 
 def test_req_func_039_adapter_cannot_answer_checks_of_another_source():
+    """Verifies REQ-FUNC-039."""
+
     def run(self, partner, deadline):
         return [
             CheckResult("vatValid", FALSE, "A", utc_now()),  # belongs to VIES
@@ -140,6 +149,8 @@ def test_req_func_039_adapter_cannot_answer_checks_of_another_source():
 
 
 def test_req_func_039_results_follow_the_declared_order():
+    """Verifies REQ-FUNC-039."""
+
     def run(self, partner, deadline):
         return [self.result("two", FALSE, utc_now()), self.result("one", TRUE, utc_now())]
 
@@ -148,6 +159,7 @@ def test_req_func_039_results_follow_the_declared_order():
 
 
 def test_req_func_039_adapter_returning_nothing_is_unknown():
+    """Verifies REQ-FUNC-039."""
     results = runner.run_checks(PARTNER, adapters=[adapter("A", ("one",), run=lambda self, p, d: None)])
     assert [(r.result, r.reason) for r in results] == [("UNKNOWN", "SOURCE_UNAVAILABLE")]
 
@@ -175,6 +187,7 @@ class OwnUnavailableAdapter(SourceAdapter):
 
 @pytest.mark.parametrize("sleep", [0, 1], ids=["raises", "overruns the budget"])
 def test_req_func_039_failure_path_runs_no_adapter_code(monkeypatch, sleep):
+    """Verifies REQ-FUNC-039."""
     monkeypatch.setattr(runner, "SOURCE_TIME_BUDGET", 0.2)
     with mock.patch(
         "checks.sources.vies.query_vies", return_value=({"valid": True, "name": "Muster Bau GmbH"}, utc_now())
@@ -188,6 +201,8 @@ def test_req_func_039_failure_path_runs_no_adapter_code(monkeypatch, sleep):
 
 
 def test_req_func_039_duplicate_result_keeps_the_first(caplog):
+    """Verifies REQ-FUNC-039."""
+
     def run(self, partner, deadline):
         return [self.result("one", TRUE, utc_now()), self.result("one", FALSE, utc_now())]
 

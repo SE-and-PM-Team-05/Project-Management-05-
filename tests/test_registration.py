@@ -26,6 +26,7 @@ def register(client, **changes):
 
 
 def test_landing_page_offers_register_and_login(client):
+    """Verifies REQ-FUNC-001."""
     html = client.get(reverse("home")).content.decode()
     assert reverse("register") in html
     assert reverse("oidc_authentication_init") in html
@@ -46,6 +47,7 @@ def test_landing_page_offers_register_and_login(client):
     ],
 )
 def test_valid_vat_formats(vat):
+    """Verifies REQ-FUNC-001."""
     validate_vat_number(vat)
 
 
@@ -66,17 +68,20 @@ def test_valid_vat_formats(vat):
     ],
 )
 def test_malformed_vat_rejected(vat):
+    """Verifies REQ-FUNC-001."""
     with pytest.raises(ValidationError):
         validate_vat_number(vat)
 
 
 def test_registration_requires_login(client, db):
+    """Verifies REQ-FUNC-001, REQ-FUNC-002."""
     response = client.get(reverse("register"))
     assert response.status_code == 302
     assert response.url.startswith(reverse("oidc_authentication_init"))
 
 
 def test_registration_creates_verified_org_with_all_roles(client, user):
+    """Verifies REQ-FUNC-001."""
     response = register(client)
     assert response.status_code == 302
 
@@ -92,6 +97,7 @@ def test_registration_creates_verified_org_with_all_roles(client, user):
 
 @pytest.mark.parametrize("field", ["organization_name", "address", "vat_number", "accept_terms"])
 def test_missing_field_rejected(client, user, field):
+    """Verifies REQ-FUNC-001."""
     data = {**VALID}
     del data[field]
     response = client.post(reverse("register"), data)
@@ -101,12 +107,14 @@ def test_missing_field_rejected(client, user, field):
 
 
 def test_malformed_vat_rejected_in_form(client, user):
+    """Verifies REQ-FUNC-001."""
     response = register(client, vat_number="ATU123")
     assert "vat_number" in response.context["form"].errors
     assert not Organization.objects.exists()
 
 
 def test_user_with_organization_cannot_register_another(client, user):
+    """Verifies REQ-FUNC-001."""
     register(client)
     response = register(client, organization_name="Other GmbH")
     assert response.status_code == 302
@@ -114,10 +122,12 @@ def test_user_with_organization_cannot_register_another(client, user):
 
 
 def test_super_admin_cannot_register_an_organization(client, db):
+    """Verifies REQ-FUNC-001."""
     client.force_login(User.objects.create_superuser("admin@bizpartnercheck.at", "x"))
     register(client)
     assert not Organization.objects.exists()
 
 
 def test_terms_page_states_no_liability(client):
+    """Verifies REQ-COMP-003."""
     assert "no liability" in client.get(reverse("terms")).content.decode()

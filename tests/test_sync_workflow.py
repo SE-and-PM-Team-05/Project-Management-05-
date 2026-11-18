@@ -48,6 +48,7 @@ def load_settings(env):
 
 
 def test_workflow_sets_the_variables_the_settings_need():
+    """Verifies REQ-FUNC-070, REQ-INST-001."""
     env = workflow_env()
     assert {"DATABASE_URL", "DJANGO_SECRET_KEY", "KEYCLOAK_CLIENT_SECRET"} <= set(env)
 
@@ -59,6 +60,7 @@ def test_workflow_sets_the_variables_the_settings_need():
 @pytest.mark.skipif((BASE_DIR / ".env").exists(), reason="a local .env may fill in the missing variable")
 def test_settings_refuse_to_load_without_the_keycloak_secret():
     # Shows that the test above would notice a missing variable.
+    """Verifies REQ-INST-001."""
     env = {key: value for key, value in workflow_env().items() if key != "KEYCLOAK_CLIENT_SECRET"}
 
     result = load_settings(env)
@@ -68,4 +70,5 @@ def test_settings_refuse_to_load_without_the_keycloak_secret():
 
 
 def test_workflow_only_reads_the_repository():
+    """Verifies REQ-FUNC-070."""
     assert re.search(r"^permissions:\s*\n\s+contents: read\s*$", WORKFLOW.read_text(), re.MULTILINE)

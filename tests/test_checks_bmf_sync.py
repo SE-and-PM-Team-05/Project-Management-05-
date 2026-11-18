@@ -56,6 +56,7 @@ def companies(count):
 
 
 def test_req_func_070_import_stores_every_entry():
+    """Verifies REQ-FUNC-070."""
     log = sync_bmf(download=serve(SAMPLE))
 
     assert log.outcome == SyncLog.OUTCOME_SUCCESS
@@ -70,6 +71,7 @@ def test_req_func_070_import_stores_every_entry():
 
 
 def test_req_func_070_import_replaces_the_old_list(last_good_copy):
+    """Verifies REQ-FUNC-070."""
     old_entry, _ = last_good_copy
 
     sync_bmf(download=serve(SAMPLE))
@@ -79,6 +81,7 @@ def test_req_func_070_import_replaces_the_old_list(last_good_copy):
 
 
 def test_req_func_072_successful_run_logs_all_fields():
+    """Verifies REQ-FUNC-072."""
     log = sync_bmf(download=serve(SAMPLE))
 
     stored = SyncLog.objects.get()
@@ -91,6 +94,7 @@ def test_req_func_072_successful_run_logs_all_fields():
 
 
 def test_req_func_072_one_log_row_per_run():
+    """Verifies REQ-FUNC-072."""
     sync_bmf(download=serve(SAMPLE))
     sync_bmf(download=fail_with("HTTP_503"))
     sync_bmf(download=serve(SAMPLE))
@@ -118,7 +122,10 @@ def assert_last_good_copy_kept(log, error, last_good_copy):
     ],
 )
 def test_req_func_073_unreachable_bmf_keeps_the_last_good_copy(last_good_copy, monkeypatch, outcome, error):
-    """The real download(): only requests.get is replaced, so the whole path from HTTP to sync log is tested."""
+    """REQ-FUNC-073.
+
+    The real download(): only requests.get is replaced, so the whole path from HTTP to sync log is tested.
+    """
 
     def get(url, timeout):
         if isinstance(outcome, Exception):
@@ -140,12 +147,14 @@ def test_req_func_073_unreachable_bmf_keeps_the_last_good_copy(last_good_copy, m
     ],
 )
 def test_req_func_073_unreadable_feed_keeps_the_last_good_copy(last_good_copy, body, error):
+    """Verifies REQ-FUNC-073."""
     log = sync_bmf(download=serve(body))
 
     assert_last_good_copy_kept(log, error, last_good_copy)
 
 
 def test_req_rel_002_interrupted_write_leaves_the_old_list_complete(last_good_copy, monkeypatch):
+    """Verifies REQ-REL-002."""
     old_entry, old_log = last_good_copy
 
     def break_halfway(objs, *args, **kwargs):
@@ -165,6 +174,7 @@ def test_req_rel_002_interrupted_write_leaves_the_old_list_complete(last_good_co
 
 
 def test_much_shorter_list_is_rejected_as_a_broken_download():
+    """Verifies REQ-FUNC-073, REQ-REL-002."""
     sync_bmf(download=serve(companies(10)))
 
     log = sync_bmf(download=serve(companies(4)))
@@ -175,6 +185,7 @@ def test_much_shorter_list_is_rejected_as_a_broken_download():
 
 
 def test_shorter_list_is_accepted_when_a_person_allows_it():
+    """Verifies REQ-FUNC-073, REQ-REL-002."""
     sync_bmf(download=serve(companies(10)))
 
     log = sync_bmf(download=serve(companies(4)), allow_shrink=True)
@@ -184,6 +195,7 @@ def test_shorter_list_is_accepted_when_a_person_allows_it():
 
 
 def test_command_imports_the_feed(monkeypatch, capsys):
+    """Verifies REQ-FUNC-070, REQ-FUNC-072."""
     monkeypatch.setattr(bmf_feed.requests, "get", lambda url, timeout: FakeResponse(200, SAMPLE))
 
     call_command("sync_bmf")
@@ -193,6 +205,7 @@ def test_command_imports_the_feed(monkeypatch, capsys):
 
 
 def test_command_fails_so_the_github_run_turns_red(monkeypatch, last_good_copy):
+    """Verifies REQ-FUNC-073, REQ-REL-002."""
     monkeypatch.setattr(bmf_feed.requests, "get", lambda url, timeout: FakeResponse(503))
 
     with pytest.raises(CommandError, match="HTTP_503. The last good copy was kept."):
