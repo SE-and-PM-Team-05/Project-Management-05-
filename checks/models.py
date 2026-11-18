@@ -25,12 +25,27 @@ from accounts.models import Organization
 from .results import NOT_APPLICABLE, format_utc
 
 
+class ImmutableQuerySet(models.QuerySet):
+    """Blocks the two QuerySet methods that write to the database without calling save() (REQ-FUNC-051).
+
+    Related managers (request.results) use this QuerySet too. Deleting stays possible.
+    """
+
+    def update(self, **kwargs):
+        raise ValueError(f"Stored {self.model.__name__} records cannot be changed.")
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        raise ValueError(f"Stored {self.model.__name__} records cannot be changed.")
+
+
 class ImmutableModel(models.Model):
     """Can be created and deleted, but never changed after it was saved (REQ-FUNC-051).
 
-    Only save() is guarded. QuerySet.update() and bulk_update() bypass it and would change stored
-    evidence, so never use them on these models.
+    save() refuses existing records, and the manager refuses update() and bulk_update(). Raw SQL is not
+    guarded. On purpose there is no admin, form or API endpoint that edits these models (SCRUM-62).
     """
+
+    objects = ImmutableQuerySet.as_manager()
 
     class Meta:
         abstract = True
