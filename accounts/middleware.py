@@ -1,5 +1,16 @@
+import logging
+
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.utils.translation import gettext as _
+
+from checks.views import api_error
+
+from .api_auth import authenticate_token, bearer_value
+
+logger = logging.getLogger(__name__)
+
+API_PREFIX = "/api/"
 
 
 class ForcePasswordChangeMiddleware:
@@ -18,4 +29,38 @@ class ForcePasswordChangeMiddleware:
             }
             if request.path not in allowed:
                 return redirect("admin:password_change")
+        return self.get_response(request)
+
+
+class ApiTokenMiddleware:
+    """Authenticate API calls that send `Authorization: Bearer <token>` (REQ-INT-011, SCRUM-71).
+
+    Only paths under /api/ accept tokens; a token never logs anybody into the web pages. If the header is present, it
+    decides alone: a bad token is 401 even if the caller also has a web session. With a valid token, request.user is
+    the token's owner and request.api_token the token; views skip the CSRF check for such calls, because a token is
+    not sent automatically by a browser. Without the header nothing changes and the web session applies.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        request.api_token = None
+        header = request.headers.get("Authorization")
+        if header is None or not request.path.startswith(API_PREFIX):
+            return self.get_response(request)
+
+        try:
+            value = bearer_value(header)
+            token = authenticate_token(value) if value else None
+        except Exception:
+            logger.exception("Token authentication failed")
+            return api_error(500, "INTERNAL_ERROR", _("Something went wrong on our side. Please try again later."))
+        if token is None:
+            response = api_error(401, "INVALID_TOKEN", _("The API token is missing, unknown, revoked or expired."))
+            response["WWW-Authenticate"] = 'Bearer error="invalid_token"'
+            return response
+
+        request.user = token.user
+        request.api_token = token
         return self.get_response(request)
