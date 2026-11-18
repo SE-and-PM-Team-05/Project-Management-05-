@@ -2,7 +2,7 @@
 {% block title %}Register – BizPartnerCheck{% endblock %}
 {% block content %}
   <h1>Register your organization</h1>
-  <p>Registration is free. You become the Org Admin and can invite your team afterwards.</p>
+  <p>Registration is free. You ({{ user.email }}) become the Org Admin and can invite your team afterwards.</p>
   <form method="post" novalidate>
     {% csrf_token %}
     {{ form.non_field_errors }}

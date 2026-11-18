@@ -3,13 +3,10 @@
 {% block content %}
 <h1>Accept Your Invitation</h1>
 
-<p>Create your account to join the organization.</p>
+<p>Join {{ invitation.organization.name }} on BizPartnerCheck as {{ user.email }}.</p>
 
 <form method="post">
     {% csrf_token %}
-
-    {{ form.as_p }}
-
-    <button type="submit">Create Account</button>
+    <button type="submit">Join {{ invitation.organization.name }}</button>
 </form>
 {% endblock %}

@@ -133,3 +133,55 @@ class CheckRequestResult(ImmutableModel):
         if self.details:
             data["details"] = self.details
         return data
+
+
+class FakeCompany(models.Model):
+    """One entry of the BMF list of sham companies (REQ-FUNC-033), as imported by the daily sync (REQ-FUNC-070).
+
+    Only the fields the check needs are stored; dates of birth of listed persons are left out (REQ-COMP-001,
+    docs/sources/bmf.md). VAT number and FN are indexed because they are the first two matching keys.
+    """
+
+    name = models.CharField(max_length=300)
+    company_register_number = models.CharField(max_length=20, blank=True, db_index=True)
+    vat_number = models.CharField(max_length=20, blank=True, db_index=True)
+    address = models.TextField(blank=True)
+    # "Veröffentlichung" in the feed: the day BMF published the entry.
+    date_listed = models.DateField()
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name_plural = "fake companies"
+
+    def __str__(self):
+        return self.name
+
+
+class SyncLog(models.Model):
+    """One run of a list sync, successful or not (REQ-FUNC-072). Written by the sync job only."""
+
+    SOURCE_BMF = "BMF"
+    OUTCOME_SUCCESS = "success"
+    OUTCOME_FAILED = "failed"
+
+    source = models.CharField(max_length=30, choices=[(SOURCE_BMF, "BMF fake-company list")])
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField()
+    outcome = models.CharField(max_length=10, choices=[(OUTCOME_SUCCESS, "Success"), (OUTCOME_FAILED, "Failed")])
+    number_of_entries = models.PositiveIntegerField(default=0)
+    # The feed's own <lastBuildDate>, which is a date without a time (docs/sources/bmf.md); empty if the run
+    # failed before it was read.
+    feed_timestamp = models.DateField(null=True, blank=True)
+    error_message = models.TextField(blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["source", "outcome", "-start_time"])]
+        ordering = ["-start_time"]
+
+    def __str__(self):
+        return f"{self.source} {self.start_time:%Y-%m-%d %H:%M} {self.outcome}"
+
+    @classmethod
+    def last_success(cls, source):
+        """The newest successful run of a source, or None; the base for the 48 h stale flag (REQ-FUNC-073)."""
+        return cls.objects.filter(source=source, outcome=cls.OUTCOME_SUCCESS).first()

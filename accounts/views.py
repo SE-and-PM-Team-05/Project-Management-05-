@@ -3,7 +3,6 @@ import secrets
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core import signing
 from django.core.mail import send_mail
 from django.db import transaction
 from django.http import HttpResponseForbidden
@@ -12,15 +11,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .forms import (
-    AcceptInvitationForm,
-    InvitationForm,
-    MemberEditForm,
-    RegistrationForm,
-    ResendVerificationForm,
-)
+from .forms import InvitationForm, MemberEditForm, RegistrationForm
 from .models import Invitation, User
-from .verification import read_token, send_verification_email
 
 PROTECTED_ROLES = [
     ("is_org_admin", "Org Admin"),
@@ -44,83 +36,18 @@ def last_active_role(member, roles_removed):
     return None
 
 
+@login_required
 def register(request):
+    if request.user.organization_id or request.user.is_superuser:
+        return redirect("home")
+
     form = RegistrationForm(request.POST or None)
 
     if request.method == "POST" and form.is_valid():
-        user = form.save()
-        send_verification_email(request, user)
-        return redirect("register_done")
+        form.save(request.user)
+        return redirect("team_members")
 
     return render(request, "accounts/register.html", {"form": form})
-
-
-def register_done(request):
-    return render(request, "accounts/register_done.html")
-
-
-def verify_email(request, token):
-    try:
-        user_id = read_token(token)
-    except signing.SignatureExpired:
-        return render(
-            request,
-            "accounts/verify_failed.html",
-            {"expired": True},
-            status=400,
-        )
-    except signing.BadSignature:
-        return render(
-            request,
-            "accounts/verify_failed.html",
-            {"expired": False},
-            status=400,
-        )
-
-    user = (
-        User.objects.select_related("organization")
-        .filter(
-            pk=user_id,
-            organization__isnull=False,
-        )
-        .first()
-    )
-
-    if user is None:
-        return render(
-            request,
-            "accounts/verify_failed.html",
-            {"expired": False},
-            status=400,
-        )
-
-    if not user.organization.is_verified:
-        user.organization.is_verified = True
-        user.organization.save(update_fields=["is_verified"])
-
-        user.is_active = True
-        user.save(update_fields=["is_active"])
-
-    return render(request, "accounts/verify_done.html")
-
-
-def resend_verification(request):
-    form = ResendVerificationForm(request.POST or None)
-
-    if request.method == "POST" and form.is_valid():
-        user = User.objects.filter(
-            email__iexact=form.cleaned_data["email"],
-            organization__is_verified=False,
-            is_org_admin=True,
-        ).first()
-
-        if user:
-            send_verification_email(request, user)
-
-        # Same response whether or not the email exists.
-        return render(request, "accounts/resend_done.html")
-
-    return render(request, "accounts/resend.html", {"form": form})
 
 
 @login_required
@@ -148,7 +75,8 @@ def invite_member(request):
     if request.method == "POST" and form.is_valid():
         email = form.cleaned_data["email"].strip()
 
-        if User.objects.filter(email__iexact=email).exists():
+        # Someone who logged in through Keycloak but hasn't joined an organization yet can still be invited.
+        if User.objects.filter(email__iexact=email).exclude(organization=None, is_superuser=False).exists():
             form.add_error(
                 "email",
                 "This person can't be invited.",
@@ -203,57 +131,42 @@ def invite_member(request):
     )
 
 
+@login_required
 def accept_invitation(request, token):
+    """Join the inviting organization with the account the invitee logged in with (REQ-FUNC-004)."""
     token_hash = hashlib.sha256(token.encode()).hexdigest()
 
     with transaction.atomic():
+        # Locked so two invitations accepted at the same time can't move the user between organizations.
+        user = User.objects.select_for_update().get(pk=request.user.pk)
         invitation = (
             Invitation.objects.select_for_update().select_related("organization").filter(token_hash=token_hash).first()
         )
 
         if invitation is None or not invitation.is_valid():
+            return render(request, "accounts/invitation_invalid.html", status=400)
+
+        if user.email.lower() != invitation.email.lower() or user.organization_id or user.is_superuser:
             return render(
                 request,
                 "accounts/invitation_invalid.html",
-                status=400,
+                {"wrong_account": True, "invited_email": invitation.email},
+                status=403,
             )
 
-        form = AcceptInvitationForm(request.POST or None)
+        if request.method == "POST":
+            user.organization = invitation.organization
+            user.is_org_admin = invitation.is_org_admin
+            user.is_request_user = invitation.is_request_user
+            user.is_review_user = invitation.is_review_user
+            user.save(update_fields=["organization", "is_org_admin", "is_request_user", "is_review_user"])
 
-        if request.method == "POST" and form.is_valid():
-            if User.objects.filter(email__iexact=invitation.email).exists():
-                form.add_error(
-                    None,
-                    "An account with this email address already exists.",
-                )
-            else:
-                data = form.cleaned_data
+            invitation.accepted_at = timezone.now()
+            invitation.save(update_fields=["accepted_at"])
 
-                User.objects.create_user(
-                    email=invitation.email,
-                    password=data["password1"],
-                    first_name=data["first_name"],
-                    last_name=data["last_name"],
-                    organization=invitation.organization,
-                    is_active=True,
-                    is_org_admin=invitation.is_org_admin,
-                    is_request_user=invitation.is_request_user,
-                    is_review_user=invitation.is_review_user,
-                )
+            return render(request, "accounts/invitation_accepted.html")
 
-                invitation.accepted_at = timezone.now()
-                invitation.save(update_fields=["accepted_at"])
-
-                return render(
-                    request,
-                    "accounts/invitation_accepted.html",
-                )
-
-    return render(
-        request,
-        "accounts/accept_invitation.html",
-        {"form": form},
-    )
+    return render(request, "accounts/accept_invitation.html", {"invitation": invitation})
 
 
 @login_required

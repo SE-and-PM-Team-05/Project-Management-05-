@@ -42,6 +42,15 @@ def vies():
         yield post
 
 
+@pytest.fixture(autouse=True)
+def hfu():
+    with mock.patch(
+        "checks.sources.hfu.query_hfu",
+        return_value={"dienstgeber": False, "epu": False},
+    ) as query:
+        yield query
+
+
 def make_user(email="anna@beispielbau.at", org_name="Beispiel Bau GmbH", **roles):
     org = Organization.objects.create(
         name=org_name, address="Hauptstraße 1", vat_number="ATU99999999", is_verified=True,
@@ -94,7 +103,11 @@ def test_req_func_045_response_has_appendix_b_shape(api, vies):
     assert body["reference"] == "PO-4711"
     assert "no liability" in body["disclaimer"]  # REQ-FUNC-048
     # Only the checks implemented so far; nothing invented for the others.
-    assert [c["check"] for c in body["checks"]] == ["vatValid", "nameMatchesVat"]
+    assert [c["check"] for c in body["checks"]] == [
+        "vatValid",
+        "nameMatchesVat",
+        "onHfuList",
+    ]
 
 
 def test_req_func_031_032_valid_vat_and_matching_name(api, vies):
@@ -138,9 +151,12 @@ def test_req_int_012_vies_outage_still_returns_200_with_unknown(api, vies):
     vies.side_effect = requests.ConnectionError()
     response = post(api, VALID_INPUT)
     assert response.status_code == 200
-    for check in checks_of(response).values():
-        assert check["result"] == "UNKNOWN"
-        assert check["reason"] == "SOURCE_UNAVAILABLE"
+    checks = checks_of(response)
+    for name in ("vatValid", "nameMatchesVat"):
+        assert checks[name]["result"] == "UNKNOWN"
+        assert checks[name]["reason"] == "SOURCE_UNAVAILABLE"
+    # Other sources are independent of VIES and still answer (REQ-FUNC-039).
+    assert checks["onHfuList"]["result"] == "FALSE"
     assert "no liability" in response.json()["disclaimer"]
 
 
@@ -181,9 +197,13 @@ def test_req_int_012_body_that_is_not_a_json_object_returns_400(api, vies, body)
     vies.assert_not_called()
 
 
-def test_req_func_031_other_eu_number_is_accepted(api, vies):
-    assert post(api, {"vatNumber": "EL123456789", "companyName": "Ellas AE"}).status_code == 200
+def test_req_func_031_other_eu_number_is_accepted(api, vies, hfu):
+    response = post(api, {"vatNumber": "EL123456789", "companyName": "Ellas AE"})
+    assert response.status_code == 200
     assert vies.call_args.kwargs["json"] == {"countryCode": "EL", "vatNumber": "123456789", **REQUESTER}
+    # HFU is asked by Austrian VAT number only (REQ-FUNC-038).
+    assert checks_of(response)["onHfuList"]["result"] == "NOT_APPLICABLE"
+    hfu.assert_not_called()
 
 
 # --- Authentication and permissions (REQ-INT-011, REQ-FUNC-012) ---
@@ -256,6 +276,7 @@ def test_req_rel_004_check_is_stored_with_all_results(api, vies, request_user):
     assert [(r.check_name, r.result) for r in stored.results.all()] == [
         ("vatValid", "TRUE"),
         ("nameMatchesVat", "TRUE"),
+        ("onHfuList", "FALSE"),
     ]
     # The response is exactly what was stored.
     assert {**stored.to_json(), "disclaimer": body["disclaimer"]} == body
@@ -330,8 +351,10 @@ def test_req_func_050_all_evidence_fields_are_stored_for_an_unknown_request(api,
     assert [(r.check_name, r.result, r.reason, r.source) for r in results] == [
         ("vatValid", "UNKNOWN", "SOURCE_UNAVAILABLE", "VIES"),
         ("nameMatchesVat", "UNKNOWN", "SOURCE_UNAVAILABLE", "VIES"),
+        ("onHfuList", "FALSE", "", "OEGK"),
     ]
-    assert all(r.data_timestamp and r.details == {"error": "NETWORK_ERROR"} for r in results)
+    assert all(r.data_timestamp for r in results)
+    assert all(r.details == {"error": "NETWORK_ERROR"} for r in results if r.source == "VIES")
 
 
 def test_req_func_050_vies_reference_number_is_stored(api, vies):
@@ -370,7 +393,7 @@ def test_req_func_041_each_check_creates_a_new_record(api, vies):
     second = post(api, VALID_INPUT).json()["requestId"]
     assert first != second
     assert CheckRequest.objects.count() == 2
-    assert CheckRequestResult.objects.count() == 4
+    assert CheckRequestResult.objects.count() == 6
 
 
 @pytest.mark.parametrize("data", [{}, {"vatNumber": "ATU1", "companyName": "X"}])
@@ -441,7 +464,7 @@ def test_sec_session_post_with_csrf_token_is_accepted(request_user, vies):
 
     client = Client(enforce_csrf_checks=True)
     client.force_login(request_user)
-    client.get(reverse("login"))  # sets the csrftoken cookie
+    client.get(reverse("home"))  # the logout form sets the csrftoken cookie
     token = client.cookies["csrftoken"].value
     response = client.post(URL, VALID_INPUT, content_type="application/json", headers={"X-CSRFToken": token})
     assert response.status_code == 200
@@ -452,3 +475,10 @@ def test_req_int_012_unexpected_error_returns_500_json(api, vies):
         response = post(api, VALID_INPUT)
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "INTERNAL_ERROR"
+
+
+def test_req_func_034_hfu_query_uses_requesting_organization_vat(api, hfu):
+    post(api, VALID_INPUT)
+
+    assert hfu.call_args.kwargs["organization_uid"] == "ATU99999999"
+    assert hfu.call_args.kwargs["partner_uid"] == "ATU12345678"

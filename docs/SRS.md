@@ -1,7 +1,7 @@
 # Software Requirements Specification
 ## For BizPartnerCheck
 
-Version 2.4 (combined team version)  
+Version 2.6 (combined team version)  
 Prepared by Luka Herceg, Elias Hoffstadt, WŚ and Tony  
 Practical Projects 2026/27  
 2026-10-22
@@ -24,6 +24,8 @@ Practical Projects 2026/27
 | Team | 2026-11-04 | Hosting decided (OD-08 closed): app on Render, database on Neon, email via Brevo SMTP, all in EU regions (C3, A5, 3.1.3, 3.5) | 2.3 |
 | Luka Herceg | 2026-11-04 | Brevo sender is temporarily Luka Herceg's private email address; it must be changed to a team email address (later: an address on the team's own domain) before the app is used beyond testing (OD-08) | 2.4 |
 | Luka Herceg | 2026-11-04 | SRS added to the code repository as `docs/SRS.md`, which is now the master copy for the team and coding agents (review of PR #9) | 2.4 |
+| Team | 2026-11-16 | Third-party login decided: users log in through a self-hosted Keycloak (OpenID Connect), which owns passwords, password reset, email verification and login lockout; Django's password login remains only for the Super Admin on the admin site. Impact: registration and invitation acceptance no longer ask for a password; the Keycloak production host is open (C3, C10, FUNC-001, FUNC-002, FUNC-003, SEC-002, SEC-004, 3.5, OD-10) | 2.5 |
+| Antonia Cheriambanattu | 2026-11-18 | HFU check only for Austrian VAT numbers (team decision in the review of PR #14, SCRUM-50): the HFU service is queried by VAT number only, so other partners get NOT_APPLICABLE, also when an FN is given (FUNC-038) | 2.6 |
 
 ## 1. Introduction
 BizPartnerCheck is a multi-tenant web service that runs the due-diligence checks a construction company must perform on a prospective business partner in one request, and stores the result as evidence. Section 1 states purpose, scope and process; Section 2 describes the business case, stakeholders, use cases and constraints; Section 3 lists the verifiable requirements; Section 4 explains how they are verified; Section 5 holds supporting material.
@@ -133,14 +135,14 @@ The project team develops the service and operates it on public managed cloud in
 |---|---|---|
 | C1 | The system must run as a web service on publicly available managed infrastructure; the customer operates no server. | External, mandatory |
 | C2 | The system must use a relational database. | External, mandatory |
-| C3 | The system is built with Python and Django (templates, built-in authentication, admin, translations), PostgreSQL, the app hosted on Render, the database on Neon and email sent through Brevo's SMTP service, all in EU regions, with as few extra libraries as possible: Python/Django chosen for the team's existing Python skills (decision 2026-10-22), hosting decided on 2026-11-04 (see 3.5). | Internal, mandatory |
+| C3 | The system is built with Python and Django (templates, admin, translations), login through a self-hosted Keycloak (OpenID Connect, decision 2026-11-16), PostgreSQL, the app hosted on Render, the database on Neon and email sent through Brevo's SMTP service, all in EU regions, with as few extra libraries as possible: Python/Django chosen for the team's existing Python skills (decision 2026-10-22), hosting decided on 2026-11-04 (see 3.5). | Internal, mandatory |
 | C4 | The system must be multi-tenant: one deployment on one domain serves all organizations. | External, mandatory |
 | C5 | The system must offer a RESTful API with token-based authentication; tokens must be listable and revocable in the web app. | External, mandatory |
 | C6 | The UI must be available in English and German. | External, mandatory |
 | C7 | The system must store requests and results, never documents. | External, mandatory |
 | C8 | Firmenbuch and GISA require registration (ID Austria) by the operator; VIES, BMF and ÖGK are free. | External, mandatory |
 | C9 | Personal data must be processed in line with the GDPR (R10). | External, mandatory |
-| C10 | Authentication must use Django's built-in authentication system (password hashing, sessions, password reset), not self-built credential handling. | Internal, mandatory |
+| C10 | Authentication must use Keycloak for users (password storage, password reset, email verification, lockout) and Django's built-in authentication only for the Super Admin's admin login and for sessions, not self-built credential handling. | Internal, mandatory |
 | C11 | Capacity is limited to ~3 months with 6–10 h per developer per week. | Internal, mandatory |
 
 ### 2.5 User Characteristics
@@ -299,9 +301,9 @@ None. Users need only a device with a current browser; no customer hardware or l
 
 | ID | Requirement | Acceptance criteria | P | V | Trace |
 |---|---|---|---|---|---|
-| REQ-FUNC-001 | The landing page shall offer Register and Login; a visitor shall be able to register an organization for free with organization name, address, VAT number, first name, last name, email and password, accepting the terms of use. | Missing fields and malformed VAT numbers rejected; on success the organization and its first user (all three org roles) exist as "unverified". | M | T | UC-01, UN-11 |
-| REQ-FUNC-002 | The system shall send a verification link and activate the organization only after it is opened; the link expires after 24 h and can be re-sent. | Unverified admin cannot log in; verified can; expired link offers resend. | M | T | UC-01 |
-| REQ-FUNC-003 | Users shall log in with email and password using Django's built-in authentication, with logout and password reset by email. | Login with correct and wrong credentials; reset flow end-to-end. | M | T | C10, UC-01 |
+| REQ-FUNC-001 | The landing page shall offer Register and Login; a visitor shall be able to create a login in Keycloak (first name, last name, email, password) and then register an organization for free with organization name, address and VAT number, accepting the terms of use. | Missing fields and malformed VAT numbers rejected; on success the organization exists and the logged-in user is its first user with all three org roles. | M | T | UC-01, UN-11 |
+| REQ-FUNC-002 | Only users whose email address Keycloak has verified (verification link sent by Keycloak) shall be able to log in, register an organization or accept an invitation. | Login with an unverified email is refused; verified succeeds. | M | T | UC-01 |
+| REQ-FUNC-003 | Users shall log in through Keycloak (OpenID Connect authorization code flow) and be matched to their account by email address; logout shall also end the Keycloak session; password reset by email is offered by Keycloak. | Login and logout through Keycloak; deactivated users and the Super Admin are refused; reset flow in Keycloak. | M | T | C10, UC-01 |
 | REQ-FUNC-004 | The system should check the registering organization's own VAT number via VIES. | Invalid → registration rejected; VIES unavailable → accepted and marked "VAT unverified". | S | T | UC-01 |
 | REQ-FUNC-005 | A setup script shall create exactly one initial Super Admin with a one-time password that must be changed at first login. Self-registration of individual users without an Org Admin is not part of release 1.0 (W). | Script run on an empty system; forced password change observed. | M | T | UC-10 |
 
@@ -360,7 +362,7 @@ Because TRUE is not always the good outcome, each check states its **expected va
 | REQ-FUNC-035 | **inCompanyRegister:** for Austrian partners the system shall look up the Firmenbuch by FN, or by name and VAT, and report FN, registered name and legal form. | Active → TRUE; deleted or not found → FALSE; several matches → UNKNOWN / AMBIGUOUS_MATCH. | M | T | UN-02 |
 | REQ-FUNC-036 | **inBusinessLicenseRegister:** for Austrian partners the system shall look up GISA and list all active licenses with the responsible person. | Company with licenses → TRUE plus list; none → FALSE. | M | T | UN-02 |
 | REQ-FUNC-037 | **hasRequiredLicenses:** if license codes are given, the result is TRUE only if each is active in GISA, otherwise FALSE naming the missing ones; without codes NOT_APPLICABLE. Which licenses are "necessary" is decided by the requester. | One missing license → FALSE naming it. | M | T | UC-04 |
-| REQ-FUNC-038 | A partner counts as Austrian if its VAT number starts with "ATU" or an FN is given; for others, checks 033 and 035…037 return NOT_APPLICABLE. | German VAT without FN → 031, 032, 034 run; others NOT_APPLICABLE. | M | T | UN-06, A3 |
+| REQ-FUNC-038 | A partner counts as Austrian if its VAT number starts with "ATU" or an FN is given; for others, checks 033 and 035…037 return NOT_APPLICABLE. Check 034 runs only if the VAT number starts with "ATU", because the HFU service is queried by VAT number only (FUNC-034); otherwise it returns NOT_APPLICABLE. | German VAT without FN → 031, 032 run; others NOT_APPLICABLE. Non-Austrian VAT with an FN → 034 NOT_APPLICABLE. | M | T | UN-06, A3 |
 | REQ-FUNC-039 | Checks shall run in parallel and independently; the failure of one source shall never stop the others or the storing of the request. | GISA stubbed to fail → all other checks still TRUE/FALSE. | M | T | UN-05 |
 | REQ-FUNC-040 | The system shall not re-check partners automatically, not even after a source sync; a re-check is a new request started by a user or client system and may reference the earlier request ID. | Advancing time or a sync creates no new result (code inspection and test). | M | I | R2 |
 | REQ-FUNC-041 | Every request creates a new, distinct record; a later check never overwrites an earlier one. | Two checks of the same partner give two records with different timestamps. | M | T | UN-01 |
@@ -435,9 +437,9 @@ Targets marked (proposed) are starting points for confirmation by the customer (
 | ID | Requirement | Acceptance criteria | P | V | Trace |
 |---|---|---|---|---|---|
 | REQ-SEC-001 | All traffic shall use HTTPS (TLS 1.2+) with HSTS; plain HTTP is redirected or refused. | TLS scan; HTTP call redirected. | M | T | C9 |
-| REQ-SEC-002 | Passwords shall be stored only as salted hashes by Django's built-in password hashing (PBKDF2 or Argon2); API tokens shall have ≥ 256 bits of randomness and be stored only as SHA-256 hashes. | Database inspection shows no plaintext secrets. | M | I | C10, UN-04 |
+| REQ-SEC-002 | User passwords shall be stored only in Keycloak (salted hashes); the Super Admin's password only as a salted hash by Django's built-in password hashing (PBKDF2 or Argon2); API tokens shall have ≥ 256 bits of randomness and be stored only as SHA-256 hashes. | Database inspection shows no plaintext secrets. | M | I | C10, UN-04 |
 | REQ-SEC-003 | The API shall allow at most 200 requests per minute per token, answering further requests with 429 and `Retry-After`; remaining quota is shown in response headers. | 201st request within a minute returns 429. | M | T | R2, UN-12 |
-| REQ-SEC-004 | Login shall be blocked for 15 min after 5 failed attempts for the same account (counter in Django's cache). | 6th attempt refused even with correct password. | M | T | UN-04 |
+| REQ-SEC-004 | Login shall be blocked for 15 min after 5 failed attempts for the same account (Keycloak brute-force detection for users; counter in Django's cache for the admin login). | 6th attempt refused even with correct password. | M | T | UN-04 |
 | REQ-SEC-005 | All input shall be validated server-side against a schema; database access uses parameterized queries only. | Injection strings rejected or stored as plain text. | M | T | R11 |
 | REQ-SEC-006 | Web sessions shall use Secure, HttpOnly, SameSite cookies, expire after 8 h of inactivity and protect state-changing forms against CSRF. | Cookie flags inspected; expired session leads to login. | M | T | R11 |
 | REQ-SEC-007 | Logs and audit records shall never contain passwords, tokens or unnecessary personal data; access to them is restricted to authorized roles. | Log sample inspected; Request User cannot read logs. | M | I | C9 |
@@ -480,7 +482,7 @@ Targets marked (proposed) are starting points for confirmation by the customer (
 | REQ-COMP-006 | Emails shall be transactional only (verification, invitation, password reset). | Email templates inspected. | M | I | C9 |
 
 ### 3.5 Design and Implementation
-The ID prefix names the template subsection (INST 3.5.1 … CM 3.5.10). **Technology stack (C3):** Python and Django (templates for HTML pages, built-in authentication, admin, translations, ORM and migrations); PostgreSQL; `requests` and `feedparser` for the data sources; pytest and ruff; GitHub with GitHub Actions for CI, deployment after green builds and the daily sync trigger; the app on Render (Frankfurt), the PostgreSQL database on Neon (EU region) and email through Brevo's SMTP service. Further libraries are added only when a requirement needs them (e.g. a SOAP client if a source requires it). Distribution: one multi-tenant production deployment in one EU region, scaled automatically by the managed platform, on one domain registered by the team.
+The ID prefix names the template subsection (INST 3.5.1 … CM 3.5.10). **Technology stack (C3):** Python and Django (templates for HTML pages, admin, translations, ORM and migrations); Keycloak for user login, connected through `mozilla-django-oidc`; PostgreSQL; `requests` and `feedparser` for the data sources; pytest and ruff; GitHub with GitHub Actions for CI, deployment after green builds and the daily sync trigger; the app on Render (Frankfurt), the PostgreSQL database on Neon (EU region) and email through Brevo's SMTP service. Further libraries are added only when a requirement needs them (e.g. a SOAP client if a source requires it). Distribution: one multi-tenant production deployment in one EU region, scaled automatically by the managed platform, on one domain registered by the team.
 
 | ID | Requirement | Acceptance criteria | P | V | Trace |
 |---|---|---|---|---|---|
@@ -582,7 +584,7 @@ The customer notes and the four individual drafts contained overlapping or contr
 | C-09 | "Full delete, no retention" vs. proof of technical actions | Requests are deleted completely; only a content-free audit entry of the deletion remains (FUNC-060/061) |
 | C-10 | "If one thing fails the company shouldn't do business" vs. "it is up to them" | Detailed result per check and a non-binding summary, never a decision (FUNC-047/048) |
 | C-11 | Austria only vs. all EU | VAT check for all EU; national checks for Austria; others NOT_APPLICABLE (FUNC-038) |
-| C-12 | Drafts differed on password storage vs. using an external identity provider | Django's built-in authentication stores salted password hashes; no self-built credential code and no external identity provider (C10, SEC-002) |
+| C-12 | Drafts differed on password storage vs. using an external identity provider | Django's built-in authentication stores salted password hashes; no self-built credential code and no external identity provider (C10, SEC-002). Revised in v2.5: users log in through a self-hosted Keycloak; Django's password login remains for the Super Admin |
 | C-13 | Drafts differed on the delivery plan (increments to 27.01. vs. course roadmap) | The course roadmap with sprints to 14.01.2027 is binding (2.8, DEAD-001) |
 
 ### Appendix D – Customer Questions and Where They Are Answered
@@ -637,6 +639,7 @@ BO-6 (workflow on time) is covered by REQ-DEAD-001, REQ-POC-001…003 and the ap
 | OD-07 | Proposed QoS targets (availability, response times) and capacity figures to be confirmed. | 3.3 | Customer |
 | OD-08 | **Closed 2026-11-04:** app on Render, database on Neon, email via Brevo (SCRUM-42). Remaining: the Brevo sender is temporarily Luka Herceg's private email address and must be changed to a team email address, later one on the team's own domain. | C3, A5, COST-001 | Team |
 | OD-09 | Final wording of the no-liability terms and legal basis for processing register person data (GDPR). | COMP-001, 003 | Customer, legal advice |
+| OD-10 | Where the production Keycloak runs (it needs its own server and PostgreSQL database in the EU) and which SMTP account it uses for verification and reset emails. | C3, A5, COST-001 | Team |
 | RK-01 | Only 6–10 h/week per person | All | Mitigation: release plan and fallback roles (2.8) |
 | RK-02 | External services unavailable or changed | FUNC-031…037 | Mitigation: adapters, UNKNOWN state, last-good snapshots |
 
