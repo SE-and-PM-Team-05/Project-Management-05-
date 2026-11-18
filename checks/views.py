@@ -118,6 +118,7 @@ def store_check_request(user, partner, reference, checks, received_at):
                 reason=result.reason or "",
                 source=result.source,
                 data_timestamp=result.data_timestamp,
+                stale=result.stale,
                 details=result.details,
             )
             for position, result in enumerate(checks)

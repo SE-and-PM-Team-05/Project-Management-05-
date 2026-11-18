@@ -1,7 +1,7 @@
 # Software Requirements Specification
 ## For BizPartnerCheck
 
-Version 2.4 (combined team version)  
+Version 2.6 (combined team version)  
 Prepared by Luka Herceg, Elias Hoffstadt, WŚ and Tony  
 Practical Projects 2026/27  
 2026-10-22
@@ -24,6 +24,7 @@ Practical Projects 2026/27
 | Team | 2026-11-04 | Hosting decided (OD-08 closed): app on Render, database on Neon, email via Brevo SMTP, all in EU regions (C3, A5, 3.1.3, 3.5) | 2.3 |
 | Luka Herceg | 2026-11-04 | Brevo sender is temporarily Luka Herceg's private email address; it must be changed to a team email address (later: an address on the team's own domain) before the app is used beyond testing (OD-08) | 2.4 |
 | Luka Herceg | 2026-11-04 | SRS added to the code repository as `docs/SRS.md`, which is now the master copy for the team and coding agents (review of PR #9) | 2.4 |
+| Luka Herceg | 2026-11-18 | FUNC-072: the sync log is visible to the operator only, not to organizations, who see data freshness through `dataTimestamp` and `stale` on each result (review of PR #18, SCRUM-63) | 2.6 |
 
 ## 1. Introduction
 BizPartnerCheck is a multi-tenant web service that runs the due-diligence checks a construction company must perform on a prospective business partner in one request, and stores the result as evidence. Section 1 states purpose, scope and process; Section 2 describes the business case, stakeholders, use cases and constraints; Section 3 lists the verifiable requirements; Section 4 explains how they are verified; Section 5 holds supporting material.
@@ -404,7 +405,7 @@ Because TRUE is not always the good outcome, each check states its **expected va
 |---|---|---|---|---|---|
 | REQ-FUNC-070 | The system shall import the BMF fake-company RSS feed at least once per day. | Sync log shows one successful run per day. | M | D | UC-09 |
 | REQ-FUNC-071 | The system shall query the HFU web service live per check; it shall import the list daily instead only if DLZ-AGH confirms a full-list export (REQ-POC-002, spike SCRUM-19: no export documented). | Decision documented; behaviour matches. | M | I | UC-09 |
-| REQ-FUNC-072 | Every sync run shall be logged with source, start and end time, outcome, number of entries, and the feed's own publication or last-modified timestamp; the log is read-only for organizations. | One log row per run with all fields. | M | T | UN-10 |
+| REQ-FUNC-072 | Every sync run shall be logged with source, start and end time, outcome, number of entries, and the feed's own publication or last-modified timestamp; only the operator can view the log and nobody can change it (organizations see how current a result is through `dataTimestamp` and `stale`). | One log row per run with all fields. | M | T | UN-10 |
 | REQ-FUNC-073 | A failed sync shall keep the last good copy; if the last success is older than 48 h, list-based checks add `stale: true`. | Simulated failure keeps data; flag appears after 48 h. | M | T | UN-10 |
 | REQ-FUNC-074 | The Super Admin should be able to view the sync log and start a sync manually. | Manual start creates a log row. | S | D | UC-10 |
 
