@@ -39,7 +39,7 @@ def vies_answer():
 
 @pytest.fixture
 def vies():
-    with mock.patch("checks.sources.vies.requests.post", return_value=vies_answer()) as post:
+    with mock.patch("checks.sources.http.requests.post", return_value=vies_answer()) as post:
         yield post
 
 
