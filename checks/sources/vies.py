@@ -9,7 +9,7 @@ import time
 import requests
 
 from ..names import names_match
-from ..results import FALSE, NO_DETAILS_FOUND, SOURCE_UNAVAILABLE, TRUE, UNKNOWN, CheckResult, utc_now
+from ..results import FALSE, NO_DETAILS_FOUND, TRUE, utc_now
 from .base import SourceAdapter
 
 logger = logging.getLogger(__name__)
@@ -96,9 +96,7 @@ class ViesAdapter(SourceAdapter):
         try:
             data, queried_at = query_vies(partner.vat_number, deadline)
         except ViesUnavailable as error:
-            queried_at = utc_now()
-            details = {"error": error.code}
-            return [self._unknown(name, SOURCE_UNAVAILABLE, queried_at, details) for name in self.checks]
+            return self.unavailable(error.code)
 
         registered_name = _text(data.get("name"))
         vat_details = {}
@@ -107,21 +105,15 @@ class ViesAdapter(SourceAdapter):
         if _text(data.get("address")):
             vat_details["registeredAddress"] = _text(data.get("address"))
 
-        vat_valid = CheckResult(
-            "vatValid", TRUE if data["valid"] else FALSE, self.source, queried_at, details=vat_details
-        )
+        vat_valid = self.result("vatValid", TRUE if data["valid"] else FALSE, queried_at, details=vat_details)
         if registered_name is None:
             # Some member states (e.g. Germany) never share the name; invalid numbers have none either.
-            name_check = self._unknown("nameMatchesVat", NO_DETAILS_FOUND, queried_at)
+            name_check = self.unknown("nameMatchesVat", NO_DETAILS_FOUND, queried_at)
         else:
-            name_check = CheckResult(
+            name_check = self.result(
                 "nameMatchesVat",
                 TRUE if names_match(partner.company_name, registered_name) else FALSE,
-                self.source,
                 queried_at,
                 details={"registeredName": registered_name},
             )
         return [vat_valid, name_check]
-
-    def _unknown(self, check, reason, queried_at, details=None):
-        return CheckResult(check, UNKNOWN, self.source, queried_at, reason=reason, details=details or {})

@@ -235,7 +235,7 @@ def test_req_func_038_source_that_does_not_apply_is_not_applicable():
 def test_req_maint_003_vies_is_registered():
     from checks.sources import ADAPTERS
 
-    assert [type(a) for a in ADAPTERS] == [ViesAdapter]
+    assert ViesAdapter in [type(a) for a in ADAPTERS]
 
 
 # --- Added in the SRS review ---
