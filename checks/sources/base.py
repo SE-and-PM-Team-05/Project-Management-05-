@@ -1,6 +1,7 @@
 """The common interface of all source adapters (REQ-MAINT-003).
 
-Plain Python without Django, so an adapter can be used and tested without the web app.
+Plain Python without Django, so an adapter can be used and tested without the web app. The exception is a
+list-based source such as BMF, which reads the list the daily sync stored in the database.
 """
 
 from ..results import SOURCE_UNAVAILABLE, UNKNOWN, CheckResult, utc_now
