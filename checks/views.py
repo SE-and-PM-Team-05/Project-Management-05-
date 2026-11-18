@@ -2,6 +2,7 @@
 
 import json
 import logging
+from dataclasses import replace
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -51,8 +52,8 @@ def create_check(request):
 def _create_check(request):
     """POST /api/v1/checks: run the VIES checks for one partner and return the result (UC-04).
 
-    Authentication is the web session for now (REQ-INT-011); API tokens follow with SCRUM-48. Every accepted
-    request is stored as evidence before the response is sent (REQ-REL-004).
+    Authentication is a Bearer token (accounts.middleware.ApiTokenMiddleware) or the web session (REQ-INT-011).
+    Every accepted request is stored as evidence before the response is sent (REQ-REL-004).
     """
     received_at = utc_now()
     if request.method != "POST":
@@ -65,7 +66,8 @@ def _create_check(request):
     # Only Request Users of an organization may start a check (SRS Appendix A, REQ-FUNC-012).
     if not (user.is_request_user and user.organization_id):
         return api_error(403, "PERMISSION_DENIED", _("You need the Request User role to start a check."))
-    if csrf_failure(request):
+    # Bearer-token calls need no CSRF token: browsers never send the Authorization header on their own.
+    if getattr(request, "api_token", None) is None and csrf_failure(request):
         return api_error(403, "CSRF_FAILED", _("Send the CSRF token in the X-CSRFToken header."))
 
     try:
@@ -78,8 +80,11 @@ def _create_check(request):
         # Invalid input is rejected before any source is called (REQ-FUNC-030).
         return api_error(400, "INVALID_INPUT", _("Some fields are invalid."), error.message_dict)
 
+    # The HFU service needs the requesting organization's VAT number (REQ-FUNC-034).
+    partner = replace(partner, requesting_organization_vat_number=user.organization.vat_number)
     checks = run_checks(partner)
-    check_request = store_check_request(user, partner, reference, checks, received_at)
+    token = getattr(request, "api_token", None)
+    check_request = store_check_request(user, partner, reference, checks, received_at, token)
 
     # Response shape of SRS Appendix B (REQ-FUNC-045); only the checks implemented so far are listed.
     body = check_request.to_json()
@@ -87,7 +92,7 @@ def _create_check(request):
     return JsonResponse(body, status=200)
 
 
-def store_check_request(user, partner, reference, checks, received_at):
+def store_check_request(user, partner, reference, checks, received_at, token=None):
     """Store the request with all its results, or nothing (REQ-REL-004, REQ-FUNC-041).
 
     A database error propagates, so the caller answers with 500 and no partial record remains. The sources
@@ -98,8 +103,9 @@ def store_check_request(user, partner, reference, checks, received_at):
             organization=user.organization,
             requested_by=user,
             requested_by_name=user.get_full_name() or user.email,
-            # Called through the API with a web session until API tokens exist (SCRUM-48).
             channel=CheckRequest.CHANNEL_API,
+            # The token's name, never its value (REQ-FUNC-045, REQ-FUNC-050); empty for web-session calls.
+            token_name=token.name if token else "",
             vat_number=partner.vat_number,
             company_name=partner.company_name,
             company_register_number=partner.company_register_number,

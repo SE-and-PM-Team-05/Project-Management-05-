@@ -79,6 +79,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "mozilla_django_oidc",
     "accounts",
     "checks",
 ]
@@ -91,6 +92,8 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "accounts.middleware.ForcePasswordChangeMiddleware",
+    # After the password-change redirect, which is for web sessions only; Bearer tokens work on /api/ (REQ-INT-011).
+    "accounts.middleware.ApiTokenMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -119,10 +122,29 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {"default": parse_database_url(os.environ.get("DATABASE_URL", "postgres:///bizpartnercheck"))}
 
 AUTH_USER_MODEL = "accounts.User"
-# Django's email + password login, refusing locked accounts (REQ-SEC-004).
-AUTHENTICATION_BACKENDS = ["accounts.backends.LockoutBackend"]
+# Users log in through Keycloak (OpenID Connect). Django's email + password login, refusing locked accounts
+# (REQ-SEC-004), is only used by the admin site, so the Super Admin can get in when Keycloak is down.
+AUTHENTICATION_BACKENDS = ["accounts.backends.KeycloakBackend", "accounts.backends.LockoutBackend"]
+LOGIN_URL = "oidc_authentication_init"
 LOGIN_REDIRECT_URL = "home"
 LOGOUT_REDIRECT_URL = "home"
+
+# The Keycloak realm, e.g. https://auth.example.com/realms/bizpartnercheck. See "Keycloak" in README.md.
+KEYCLOAK_REALM_URL = os.environ.get("KEYCLOAK_REALM_URL", "http://localhost:8080/realms/bizpartnercheck").rstrip("/")
+OIDC_RP_CLIENT_ID = os.environ.get("KEYCLOAK_CLIENT_ID", "bizpartnercheck")
+OIDC_RP_CLIENT_SECRET = os.environ.get("KEYCLOAK_CLIENT_SECRET", "")
+if not OIDC_RP_CLIENT_SECRET and not DEBUG:
+    raise ImproperlyConfigured("KEYCLOAK_CLIENT_SECRET must be set when DJANGO_DEBUG is off")
+OIDC_RP_SIGN_ALGO = "RS256"
+OIDC_RP_SCOPES = "openid email profile"
+OIDC_OP_AUTHORIZATION_ENDPOINT = f"{KEYCLOAK_REALM_URL}/protocol/openid-connect/auth"
+OIDC_OP_TOKEN_ENDPOINT = f"{KEYCLOAK_REALM_URL}/protocol/openid-connect/token"
+OIDC_OP_USER_ENDPOINT = f"{KEYCLOAK_REALM_URL}/protocol/openid-connect/userinfo"
+OIDC_OP_JWKS_ENDPOINT = f"{KEYCLOAK_REALM_URL}/protocol/openid-connect/certs"
+OIDC_OP_LOGOUT_ENDPOINT = f"{KEYCLOAK_REALM_URL}/protocol/openid-connect/logout"
+# Logging out of the app also ends the Keycloak session; the stored ID token lets Keycloak skip its confirmation page.
+OIDC_OP_LOGOUT_URL_METHOD = "accounts.backends.keycloak_logout_url"
+OIDC_STORE_ID_TOKEN = True
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

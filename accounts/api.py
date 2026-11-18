@@ -1,6 +1,8 @@
 """REST API v1 for API tokens: GET/POST /api/v1/tokens, DELETE /api/v1/tokens/{id} (SRS 3.1.3, UC-03).
 
-Authentication is the web session for now (REQ-INT-011); Bearer tokens follow with SCRUM-71.
+Authentication is a Bearer token (accounts.middleware.ApiTokenMiddleware) or the web session (REQ-INT-011). A Bearer
+token may list tokens and revoke them, but not create new ones: otherwise a leaked token could mint replacements and
+revoking it would no longer cut the attacker off (UN-04).
 """
 
 import json
@@ -54,7 +56,7 @@ def json_api(allowed_methods):
                     return api_error(401, "NOT_AUTHENTICATED", _("Log in to use the API."))
                 if not can_manage_tokens(request.user):
                     return api_error(403, "PERMISSION_DENIED", _("Only users of an organization have API tokens."))
-                if request.method != "GET" and csrf_failure(request):
+                if request.method != "GET" and getattr(request, "api_token", None) is None and csrf_failure(request):
                     return api_error(403, "CSRF_FAILED", _("Send the CSRF token in the X-CSRFToken header."))
                 return view(request, *args, **kwargs)
             except Exception:
@@ -75,6 +77,10 @@ def tokens(request):
 
 def create_token(request):
     """POST /api/v1/tokens: {"name": …, "userId": optional, "expiresAt": optional} → 201 with the full value once."""
+    if getattr(request, "api_token", None) is not None:
+        return api_error(
+            403, "PERMISSION_DENIED", _("Create tokens on the API tokens page or with a web session, not with a token.")
+        )
     try:
         data = json.loads(request.body or b"null")
     except ValueError:  # includes UnicodeDecodeError
