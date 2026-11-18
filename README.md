@@ -137,6 +137,34 @@ Then put `KEYCLOAK_CLIENT_SECRET=local-dev-secret` in your `.env`. Locally there
 | `KEYCLOAK_CLIENT_ID` | no | `bizpartnercheck` | Client ID of the app in that realm. |
 | `KEYCLOAK_CLIENT_SECRET` | when debug is off | – | Secret of the `bizpartnercheck` client; the same value Keycloak got as `KEYCLOAK_CLIENT_SECRET` when it imported the realm. |
 
+### Test names and SRS requirement IDs
+
+SRS Section 4 asks for one verification record per requirement. In this repository the tests are those records, so every test says which requirement it verifies (SCRUM-55):
+
+- Put the requirement ID(s), written exactly as in the SRS (`REQ-SEC-004`), at the start of the test's docstring. If one test verifies several requirements, list them all, separated by commas.
+- A test function whose name carries the ID (`test_req_func_031_...`) still needs the ID in its docstring, because a search for `REQ-FUNC-031` does not match the lower-case name.
+
+```python
+def test_lock_ends_after_15_minutes(client, admin, monkeypatch):
+    """REQ-SEC-004: a locked account can log in again after 15 minutes."""
+```
+
+To see which tests verify a requirement, search the tests for its ID. A search with no hit means no test verifies it yet:
+
+```bash
+grep -rn "REQ-SEC-004" tests/
+```
+
+In PowerShell: `Select-String -Path tests\*.py -Pattern "REQ-SEC-004"`.
+
+To list every requirement ID from the SRS that no test mentions (many are verified by inspection, demonstration or analysis, not by a test), in Ubuntu or Git Bash:
+
+```bash
+grep -o "REQ-[A-Z]*-[0-9]*" docs/SRS.md | sort -u | while read id; do grep -rqF "$id" tests/ || echo "$id"; done
+```
+
+`tests/test_traceability.py` runs in CI and fails if a test names no requirement ID or names one that does not exist in `docs/SRS.md`.
+
 ### Dependencies
 
 Direct dependencies are listed in `requirements.in` (app) and `requirements-dev.in` (tools); `requirements.txt` and `requirements-dev.txt` are the pinned lock files. To add or upgrade a library (agree on it in the team first):
@@ -425,6 +453,7 @@ A work item is done when:
 - [ ] Code is reviewed and approved by another team member
 - [ ] CI is green: ruff passes and all tests pass
 - [ ] New logic has tests; test coverage of the check logic stays at or above 70 %
+- [ ] Every new test names the SRS requirement ID(s) it verifies in its docstring (see [Test names and SRS requirement IDs](#test-names-and-srs-requirement-ids))
 - [ ] Every database query is scoped to the user's organization, with a test that a user of organization A gets 404 on organization B's data (REQ-FUNC-013)
 - [ ] No secrets, API keys or personal data are committed
 - [ ] Documentation (this README, AGENTS.md, API reference) is updated if behaviour or setup changed

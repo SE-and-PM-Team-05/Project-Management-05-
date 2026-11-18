@@ -9,6 +9,9 @@ Practical Projects 2026/27 (Project Management and Software Engineering). A 5-pe
 - Capacity: 6–10 h per person per week. Releases: R1 = workflow (Sprints 1–3), R2 = completion (Sprint 4), R3 = risk checks (stretch).
 - Stack (decided 2026-10-22, SRS v2.1 C3): Python + Django (templates, admin, i18n, ORM), user login through a self-hosted Keycloak via `mozilla-django-oidc` (decided 2026-11-16, SRS v2.5 C3; Django's password login only for the Super Admin on `/admin/`), PostgreSQL, `requests` + `feedparser`, pytest + ruff, GitHub + GitHub Actions (CI and daily sync trigger), hosted on Render (Frankfurt) with the database on Neon (EU) and email via Brevo SMTP (decided 2026-11-04, SRS v2.3 C3). Keep it minimal: the team is 3rd-semester; add a library only when a requirement needs it. No Next.js, Vercel-specific features, HTMX, Django Ninja, allauth or Sentry unless the team decides otherwise.
 
+## Tests
+- Every test function names the SRS requirement ID(s) it verifies at the start of its docstring, written exactly as in `docs/SRS.md` (e.g. `"""REQ-SEC-004: a locked account can log in again after 15 minutes."""`). `tests/test_traceability.py` fails in CI otherwise. Details: README, "Test names and SRS requirement IDs".
+
 ## Commits and pull requests
 - Follow the Jira-key rules for branches, commits and pull requests in the README.
 - Never add AI attribution: no `Co-Authored-By` lines for AI tools in commit messages and no "Generated with …" lines in pull request descriptions. (Claude Code is also configured this way in `.claude/settings.json`.)
