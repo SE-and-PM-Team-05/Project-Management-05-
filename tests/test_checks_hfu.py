@@ -6,7 +6,7 @@ from unittest import mock
 import pytest
 import requests
 
-from checks.results import SOURCE_UNAVAILABLE, UNKNOWN, Partner
+from checks.results import FALSE, SOURCE_UNAVAILABLE, TRUE, UNKNOWN, Partner
 from checks.sources.hfu import (
     HfuAdapter,
     HfuUnavailable,
@@ -227,3 +227,36 @@ def test_hfu_adapter_returns_unknown_when_service_unavailable():
     assert result[0].result == UNKNOWN
     assert result[0].reason == SOURCE_UNAVAILABLE
     assert result[0].details["error"] == "TIMEOUT"
+
+
+PARTNER = Partner(
+    vat_number="ATU12345675",
+    company_name="Test Company",
+    requesting_organization_vat_number="ATU12345678",
+)
+
+
+@pytest.mark.parametrize(
+    ("listing", "expected"),
+    [
+        ({"dienstgeber": True, "epu": False}, TRUE),
+        ({"dienstgeber": False, "epu": True}, TRUE),
+        ({"dienstgeber": False, "epu": False}, FALSE),
+    ],
+)
+def test_req_func_034_hfu_listing_maps_to_true_or_false(listing, expected):
+    with mock.patch("checks.sources.hfu.query_hfu", return_value=listing):
+        [result] = HfuAdapter().run(PARTNER, time.monotonic() + 10)
+
+    assert result.result == expected
+    assert result.reason is None
+    assert result.details["withholdingApplies"] is (expected == FALSE)
+    assert result.details["stichtag"] == result.data_timestamp.date().isoformat()
+
+
+def test_req_func_034_unavailable_result_includes_stichtag():
+    with mock.patch("checks.sources.hfu.query_hfu", side_effect=HfuUnavailable("HTTP_503")):
+        [result] = HfuAdapter().run(PARTNER, time.monotonic() + 10)
+
+    assert result.result == UNKNOWN
+    assert result.details == {"stichtag": result.data_timestamp.date().isoformat(), "error": "HTTP_503"}

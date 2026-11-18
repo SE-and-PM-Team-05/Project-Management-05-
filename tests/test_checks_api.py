@@ -146,9 +146,12 @@ def test_req_int_012_vies_outage_still_returns_200_with_unknown(api, vies):
     vies.side_effect = requests.ConnectionError()
     response = post(api, VALID_INPUT)
     assert response.status_code == 200
-    for check in checks_of(response).values():
-        assert check["result"] == "UNKNOWN"
-        assert check["reason"] == "SOURCE_UNAVAILABLE"
+    checks = checks_of(response)
+    for name in ("vatValid", "nameMatchesVat"):
+        assert checks[name]["result"] == "UNKNOWN"
+        assert checks[name]["reason"] == "SOURCE_UNAVAILABLE"
+    # Other sources are independent of VIES and still answer (REQ-FUNC-039).
+    assert checks["onHfuList"]["result"] == "FALSE"
     assert "no liability" in response.json()["disclaimer"]
 
 
@@ -260,10 +263,11 @@ def test_req_rel_004_check_is_stored_with_all_results(api, vies, request_user):
     assert stored.company_name == "Muster Bau GmbH"
     assert stored.company_register_number == "123456a"
     assert stored.reference == "PO-4711"
+    assert stored.received_at <= stored.completed_at
     assert [(r.check_name, r.result) for r in stored.results.all()] == [
         ("vatValid", "TRUE"),
         ("nameMatchesVat", "TRUE"),
-        ("onHfuList", "UNKNOWN"),
+        ("onHfuList", "FALSE"),
     ]
     # The response is exactly what was stored.
     assert {**stored.to_json(), "disclaimer": body["disclaimer"]} == body
@@ -367,3 +371,10 @@ def test_req_int_012_unexpected_error_returns_500_json(api, vies):
         response = post(api, VALID_INPUT)
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "INTERNAL_ERROR"
+
+
+def test_req_func_034_hfu_query_uses_requesting_organization_vat(api, hfu):
+    post(api, VALID_INPUT)
+
+    assert hfu.call_args.kwargs["organization_uid"] == "ATU99999999"
+    assert hfu.call_args.kwargs["partner_uid"] == "ATU12345678"

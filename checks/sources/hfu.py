@@ -7,7 +7,9 @@ import xml.etree.ElementTree as ET
 import requests
 
 from ..results import (
+    FALSE,
     SOURCE_UNAVAILABLE,
+    TRUE,
     UNKNOWN,
     CheckResult,
     utc_now,
@@ -108,50 +110,48 @@ def parse_hfu_response(xml_text):
 
 
 class HfuAdapter(SourceAdapter):
+    """onHfuList (REQ-FUNC-034): live query per check by VAT number only (REQ-FUNC-071).
+
+    The result is informational: FALSE is normal and means part of the payment must be withheld.
+    """
+
     source = "OEGK"
     checks = ("onHfuList",)
 
     def run(self, partner, deadline):
+        stichtag = utc_now().date().isoformat()
+
         if not partner.requesting_organization_vat_number:
-            return [
-                CheckResult(
-                    check="onHfuList",
-                    result=UNKNOWN,
-                    source=self.source,
-                    data_timestamp=utc_now(),
-                    reason=SOURCE_UNAVAILABLE,
-                    details={"error": "MISSING_ORGANIZATION_UID"},
-                )
-            ]
+            return [self.unavailable(stichtag, "MISSING_ORGANIZATION_UID")]
 
         try:
-            query_hfu(
+            listing = query_hfu(
                 organization_uid=partner.requesting_organization_vat_number,
                 partner_uid=partner.vat_number,
-                stichtag=utc_now().date().isoformat(),
+                stichtag=stichtag,
                 deadline=deadline,
             )
-
         except HfuUnavailable as error:
-            return [
-                CheckResult(
-                    check="onHfuList",
-                    result=UNKNOWN,
-                    source=self.source,
-                    data_timestamp=utc_now(),
-                    reason=SOURCE_UNAVAILABLE,
-                    details={"error": error.code},
-                )
-            ]
+            return [self.unavailable(stichtag, error.code)]
 
-        # The mapping of the two HFU flags to onHfuList
-        # still needs confirmation.
+        # Listed on either HFU list (employer or one-person company) means no withholding.
+        listed = listing["dienstgeber"] or listing["epu"]
         return [
             CheckResult(
                 check="onHfuList",
-                result=UNKNOWN,
+                result=TRUE if listed else FALSE,
                 source=self.source,
                 data_timestamp=utc_now(),
-                details={"error": "HFU_RESULT_MAPPING_PENDING"},
+                details={"stichtag": stichtag, "withholdingApplies": not listed},
             )
         ]
+
+    def unavailable(self, stichtag, error):
+        return CheckResult(
+            check="onHfuList",
+            result=UNKNOWN,
+            source=self.source,
+            data_timestamp=utc_now(),
+            reason=SOURCE_UNAVAILABLE,
+            details={"stichtag": stichtag, "error": error},
+        )
