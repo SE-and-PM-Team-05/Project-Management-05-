@@ -3,57 +3,30 @@
 Uses the European Commission's VIES REST API; see docs/sources/vies.md for fields and error cases.
 """
 
-import logging
-import time
-
-import requests
-
 from ..names import names_match
-from ..results import FALSE, NO_DETAILS_FOUND, TRUE, utc_now
+from ..results import FALSE, NO_DETAILS_FOUND, TRUE
 from .base import SourceAdapter
-
-logger = logging.getLogger(__name__)
+from .http import SourceUnavailable, post_within_budget
 
 VIES_URL = "https://ec.europa.eu/taxation_customs/vies/rest-api/check-vat-number"
 # Placeholders VIES sends instead of a name or address when a member state does not share it.
 NO_DATA = {"", "---"}
 
 
-class ViesUnavailable(Exception):
-    """VIES gave no usable answer; `code` is a short, language-neutral reason for the details."""
-
-    def __init__(self, code):
-        super().__init__(code)
-        self.code = code
+# Kept as a name of its own so the VIES code reads clearly; it is the shared SourceUnavailable.
+ViesUnavailable = SourceUnavailable
 
 
 def query_vies(vat_number, deadline):
     """Ask VIES about a normalized VAT number such as "ATU12345678".
 
     Returns (parsed JSON answer, UTC time of the query that answered), so `dataTimestamp` is the time of
-    the query and not of an earlier failed attempt (SRS 3.2.4).
-
-    A transient error (network error, timeout, HTTP 5xx) is retried once if time is left before
-    `deadline` (REQ-REL-003). Raises ViesUnavailable when no usable answer arrives in time.
+    the query and not of an earlier failed attempt (SRS 3.2.4). Transient errors are retried once within
+    the budget (see post_within_budget). Raises ViesUnavailable when no usable answer arrives in time.
     """
     body = {"countryCode": vat_number[:2], "vatNumber": vat_number[2:]}
-    for attempt in (1, 2):
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise ViesUnavailable("TIMEOUT")
-        queried_at = utc_now()
-        try:
-            response = requests.post(VIES_URL, json=body, timeout=remaining)
-        except requests.Timeout:
-            error = "TIMEOUT"
-        except requests.RequestException:
-            error = "NETWORK_ERROR"
-        else:
-            if response.status_code < 500:
-                return _parse(response), queried_at
-            error = f"HTTP_{response.status_code}"
-        logger.warning("VIES attempt %s failed: %s", attempt, error)
-    raise ViesUnavailable(error)
+    response, queried_at = post_within_budget(VIES_URL, deadline, source="VIES", json=body)
+    return _parse(response), queried_at
 
 
 def _parse(response):
