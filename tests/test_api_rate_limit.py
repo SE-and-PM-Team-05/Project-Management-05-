@@ -33,7 +33,7 @@ def vies():
         "name": "MUSTER BAU GMBH",
         "address": "HAUPTSTRASSE 1, 3500 KREMS",
     }
-    with mock.patch("checks.sources.vies.requests.post", return_value=answer) as post:
+    with mock.patch("checks.sources.http.requests.post", return_value=answer) as post:
         yield post
 
 
