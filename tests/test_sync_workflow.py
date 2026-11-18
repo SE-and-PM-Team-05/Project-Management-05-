@@ -32,6 +32,8 @@ def load_settings(env):
     """Import the settings in a new process, as `manage.py` would in the job; returns the finished process."""
     clean_env = {
         "PATH": os.environ.get("PATH", ""),
+        # Windows: Python needs SYSTEMROOT to start its socket support (WinError 10106 without it).
+        "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
         "DJANGO_SETTINGS_MODULE": "config.settings",
         # The job does not set DJANGO_DEBUG, so debug is off; set it explicitly so a local .env cannot turn it on.
         "DJANGO_DEBUG": "false",
