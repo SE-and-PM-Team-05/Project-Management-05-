@@ -1,15 +1,17 @@
 """BMF adapter: answers listedAsFakeCompany (REQ-FUNC-033) from the locally synced list of sham companies.
 
 Unlike the other adapters this one reads the database, because the list is synced daily (REQ-FUNC-070)
-and not queried live.
+and not queried live. It sets `stale` when the last successful sync is older than 48 h (REQ-FUNC-073).
 """
 
 import threading
+from datetime import timedelta
 
 from ..names import normalize_company_name
 from ..results import AMBIGUOUS_MATCH, FALSE, SOURCE_UNAVAILABLE, TRUE, UNKNOWN, CheckResult, utc_now
 from .base import SourceAdapter
 
+STALE_AFTER = timedelta(hours=48)
 CHECK = "listedAsFakeCompany"
 
 
@@ -79,7 +81,8 @@ class BmfAdapter(SourceAdapter):
             )
             result, details = find_match(partner, entries)
             reason = AMBIGUOUS_MATCH if result == UNKNOWN else None
-            return [CheckResult(CHECK, result, self.source, last_success.end_time, reason, details)]
+            stale = utc_now() - last_success.end_time > STALE_AFTER
+            return [CheckResult(CHECK, result, self.source, last_success.end_time, reason, details, stale)]
         finally:
             # Django does not close connections opened in threads it doesn't manage; the main thread keeps its own.
             if threading.current_thread() is not threading.main_thread():

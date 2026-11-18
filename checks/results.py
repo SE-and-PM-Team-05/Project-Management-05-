@@ -43,6 +43,8 @@ class CheckResult:
     data_timestamp: datetime | None = None
     reason: str | None = None
     details: dict = field(default_factory=dict)
+    # Only list-based sources set it: True when the synced list is older than 48 h (REQ-FUNC-073).
+    stale: bool | None = None
 
     def to_json(self):
         data = {"check": self.check, "result": self.result}
@@ -52,6 +54,8 @@ class CheckResult:
         # dataTimestamp is omitted for NOT_APPLICABLE (SRS 3.2.4).
         if self.data_timestamp and self.result != NOT_APPLICABLE:
             data["dataTimestamp"] = format_utc(self.data_timestamp)
+        if self.stale is not None:
+            data["stale"] = self.stale
         if self.details:
             data["details"] = self.details
         return data

@@ -104,6 +104,7 @@ class CheckRequestResult(ImmutableModel):
     reason = models.CharField(max_length=30, blank=True)
     source = models.CharField(max_length=30)
     data_timestamp = models.DateTimeField(null=True, blank=True)
+    stale = models.BooleanField(null=True, blank=True)
     details = models.JSONField(default=dict, blank=True)
 
     class Meta:
@@ -120,6 +121,8 @@ class CheckRequestResult(ImmutableModel):
         data["source"] = self.source
         if self.data_timestamp and self.result != NOT_APPLICABLE:
             data["dataTimestamp"] = format_utc(self.data_timestamp)
+        if self.stale is not None:
+            data["stale"] = self.stale
         if self.details:
             data["details"] = self.details
         return data
