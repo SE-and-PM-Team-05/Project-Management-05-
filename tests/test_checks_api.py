@@ -11,6 +11,8 @@ from django.utils import timezone
 
 from accounts.models import Organization, User
 from checks.models import CheckRequest, CheckRequestResult
+from checks.sources.base import SourceAdapter
+from checks.sources.vies import ViesAdapter
 
 URL = "/api/v1/checks"
 VALID_INPUT = {"vatNumber": "atu 123.456-78", "companyName": "Muster Bau GmbH"}
@@ -33,7 +35,7 @@ def vies_answer(valid=True, name="MUSTER BAU GMBH"):
 
 @pytest.fixture
 def vies():
-    with mock.patch("checks.sources.vies.requests.post", return_value=vies_answer()) as post:
+    with mock.patch("checks.sources.http.requests.post", return_value=vies_answer()) as post:
         yield post
 
 
@@ -288,6 +290,32 @@ def test_req_func_050_request_with_unknown_results_is_stored_too(api, vies):
         "SOURCE_UNAVAILABLE",
         {"error": "NETWORK_ERROR"},
     )
+
+
+class FailingSource(SourceAdapter):
+    source = "FAILING"
+    checks = ("failingCheck",)
+
+    def run(self, partner, deadline):
+        raise ConnectionError("source is down")
+
+
+def test_scrum_60_failing_source_still_returns_200_and_the_request_is_stored(api, vies):
+    """One source stubbed to fail: the others answer, the response is 200 and everything is stored
+    (REQ-FUNC-039, REQ-REL-001, REQ-INT-012)."""
+    with mock.patch("checks.runner.ADAPTERS", [ViesAdapter(), FailingSource()]):
+        response = post(api, VALID_INPUT)
+    assert response.status_code == 200
+    checks = checks_of(response)
+    assert checks["vatValid"]["result"] == "TRUE"
+    assert checks["nameMatchesVat"]["result"] == "TRUE"
+    assert (checks["failingCheck"]["result"], checks["failingCheck"]["reason"]) == ("UNKNOWN", "SOURCE_UNAVAILABLE")
+    stored = CheckRequest.objects.get(pk=response.json()["requestId"])
+    assert [(r.check_name, r.result) for r in stored.results.all()] == [
+        ("vatValid", "TRUE"),
+        ("nameMatchesVat", "TRUE"),
+        ("failingCheck", "UNKNOWN"),
+    ]
 
 
 def test_req_func_041_each_check_creates_a_new_record(api, vies):
