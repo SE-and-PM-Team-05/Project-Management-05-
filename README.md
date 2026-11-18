@@ -180,7 +180,7 @@ All endpoints live under `/api/v1/` and answer in JSON. Times are UTC in ISO 860
 
 ### `POST /api/v1/checks` – check a business partner
 
-Runs the checks implemented so far, `vatValid` and `nameMatchesVat`, both answered by one call to VIES (REQ-FUNC-030…032). The other checks (fake-company list, HFU, Firmenbuch, GISA) are added in later sprints and are not in the response yet. Every accepted request is **stored** as evidence, atomically with all its results (REQ-REL-004); `requestId` is its ID. Stored requests cannot be changed, only deleted as a whole (REQ-FUNC-051). Invalid or rejected calls store nothing.
+Runs the checks implemented so far, `vatValid` and `nameMatchesVat`, both answered by one call to VIES (REQ-FUNC-030…032). The other checks (fake-company list, HFU, Firmenbuch, GISA) are added in later sprints and are not in the response yet. Every accepted request is **stored** as evidence, atomically with all its results (REQ-REL-004); `requestId` is its ID. Stored requests cannot be changed, only deleted as a whole (REQ-FUNC-051): `save()`, `QuerySet.update()` and `bulk_update()` refuse, and there is no admin page or API route that edits them. Partners are never re-checked automatically, not after a sync and not over time; a re-check is a new request (REQ-FUNC-040, REQ-FUNC-041). Invalid or rejected calls store nothing.
 
 **Authentication (for now):** a logged-in web session of a user with the Request User role, plus the CSRF token in the `X-CSRFToken` header. API tokens follow with SCRUM-48 (REQ-FUNC-020).
 
