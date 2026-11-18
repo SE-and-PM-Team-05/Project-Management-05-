@@ -2,6 +2,7 @@
 
 import json
 import logging
+from dataclasses import replace
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -78,6 +79,8 @@ def _create_check(request):
         # Invalid input is rejected before any source is called (REQ-FUNC-030).
         return api_error(400, "INVALID_INPUT", _("Some fields are invalid."), error.message_dict)
 
+    # The HFU service needs the requesting organization's VAT number (REQ-FUNC-034).
+    partner = replace(partner, requesting_organization_vat_number=user.organization.vat_number)
     checks = run_checks(partner)
     check_request = store_check_request(user, partner, reference, checks, received_at)
 

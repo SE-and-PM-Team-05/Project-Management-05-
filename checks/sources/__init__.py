@@ -3,11 +3,13 @@
 The order of ADAPTERS is the order of the checks in every response.
 """
 
+from .hfu import HfuAdapter
 from .registry import validate
 from .vies import ViesAdapter
 
 ADAPTERS = validate(
     [
         ViesAdapter(),
+        HfuAdapter(),
     ]
 )
