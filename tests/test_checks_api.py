@@ -108,6 +108,7 @@ def test_req_func_045_response_has_appendix_b_shape(api, vies):
     assert [c["check"] for c in body["checks"]] == [
         "vatValid",
         "nameMatchesVat",
+        "listedAsFakeCompany",
         "onHfuList",
     ]
 
@@ -278,6 +279,7 @@ def test_req_rel_004_check_is_stored_with_all_results(api, vies, request_user):
     assert [(r.check_name, r.result) for r in stored.results.all()] == [
         ("vatValid", "TRUE"),
         ("nameMatchesVat", "TRUE"),
+        ("listedAsFakeCompany", "UNKNOWN"),  # no list sync in this test
         ("onHfuList", "FALSE"),
     ]
     # The response is exactly what was stored.
@@ -353,6 +355,7 @@ def test_req_func_050_all_evidence_fields_are_stored_for_an_unknown_request(api,
     assert [(r.check_name, r.result, r.reason, r.source) for r in results] == [
         ("vatValid", "UNKNOWN", "SOURCE_UNAVAILABLE", "VIES"),
         ("nameMatchesVat", "UNKNOWN", "SOURCE_UNAVAILABLE", "VIES"),
+        ("listedAsFakeCompany", "UNKNOWN", "SOURCE_UNAVAILABLE", "BMF"),
         ("onHfuList", "FALSE", "", "OEGK"),
     ]
     assert all(r.data_timestamp for r in results)
@@ -395,7 +398,7 @@ def test_req_func_041_each_check_creates_a_new_record(api, vies):
     second = post(api, VALID_INPUT).json()["requestId"]
     assert first != second
     assert CheckRequest.objects.count() == 2
-    assert CheckRequestResult.objects.count() == 6
+    assert CheckRequestResult.objects.count() == 8  # 4 checks per request: VIES (2), BMF, HFU
 
 
 @pytest.mark.parametrize("data", [{}, {"vatNumber": "ATU1", "companyName": "X"}])
@@ -463,7 +466,12 @@ def test_req_func_051_queryset_update_and_bulk_update_are_blocked(api, vies):
         CheckRequestResult.objects.bulk_update(results, ["result"])
     stored.refresh_from_db()
     assert stored.company_name == "Muster Bau GmbH"
-    assert [r.result for r in stored.results.all()] == ["TRUE", "TRUE", "FALSE"]  # vatValid, nameMatchesVat, onHfuList
+    assert [r.result for r in stored.results.all()] == [
+        "TRUE",
+        "TRUE",
+        "UNKNOWN",
+        "FALSE",
+    ]  # vatValid, nameMatchesVat, listedAsFakeCompany (no sync), onHfuList
 
 
 @pytest.mark.parametrize("model", [CheckRequest, CheckRequestResult])
@@ -517,7 +525,7 @@ def test_req_func_040_advancing_time_creates_no_new_result(api, vies):
 
     assert after == before
     assert CheckRequest.objects.count() == 1
-    assert CheckRequestResult.objects.count() == 3  # VIES (2) + HFU
+    assert CheckRequestResult.objects.count() == 4  # VIES (2), BMF, HFU
     assert vies.call_count == 1
 
 
