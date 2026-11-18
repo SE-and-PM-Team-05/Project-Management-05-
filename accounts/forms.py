@@ -3,6 +3,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import Organization, User
+from .tokens import LATEST_EXPIRY_DATE
 from .validators import normalize_vat_number, validate_vat_number
 
 
@@ -86,3 +87,32 @@ class MemberEditForm(forms.Form):
             raise forms.ValidationError("Select at least one role.")
 
         return cleaned
+
+
+class ApiTokenForm(forms.Form):
+    """Create an API token (REQ-FUNC-020); the owner field is only offered to Org Admins."""
+
+    name = forms.CharField(max_length=100, help_text="e.g. the system that will use it, such as “ERP prod”")
+    owner = forms.ModelChoiceField(queryset=User.objects.none(), empty_label=None)
+    expires_on = forms.DateField(
+        label="Expires on (optional)",
+        required=False,
+        widget=forms.DateInput(attrs={"type": "date"}),
+        help_text="Leave empty for a token that works until it is revoked. It stops working at the end of this day.",
+    )
+
+    def __init__(self, *args, owners, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["owner"].queryset = owners
+        if owners.count() <= 1:
+            # A user without the Org Admin role can only create tokens for themselves.
+            self.fields["owner"].widget = forms.HiddenInput()
+            self.fields["owner"].initial = owners.first()
+
+    def clean_expires_on(self):
+        day = self.cleaned_data["expires_on"]
+        if day and day < timezone.localdate():
+            raise forms.ValidationError("The expiry date must not be in the past.")
+        if day and day > LATEST_EXPIRY_DATE:
+            raise forms.ValidationError(f"The expiry date must be in {LATEST_EXPIRY_DATE.year} or earlier.")
+        return day
