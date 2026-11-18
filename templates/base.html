@@ -22,10 +22,10 @@
       {% if user.is_authenticated %}
         {% if user.organization_id %}<a href="{% url 'api_tokens' %}">API tokens</a>{% endif %}
         <span style="margin-left:1rem">{{ user.email }}</span>
-        <form method="post" action="{% url 'logout' %}" style="display:inline">{% csrf_token %}<button type="submit" style="margin:0 0 0 1rem">Log out</button></form>
+        <form method="post" action="{% url 'oidc_logout' %}" style="display:inline">{% csrf_token %}<button type="submit" style="margin:0 0 0 1rem">Log out</button></form>
       {% else %}
         <a href="{% url 'register' %}">Register</a>
-        <a href="{% url 'login' %}">Login</a>
+        <a href="{% url 'oidc_authentication_init' %}">Login</a>
       {% endif %}
     </nav>
   </header>

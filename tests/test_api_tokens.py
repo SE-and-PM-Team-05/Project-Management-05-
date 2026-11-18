@@ -421,7 +421,7 @@ def test_web_page_lists_tokens_and_revokes(client, admin, anna):
 def test_web_page_requires_login(client):
     response = client.get(reverse("api_tokens"))
     assert response.status_code == 302
-    assert reverse("login") in response["Location"]
+    assert reverse("oidc_authentication_init") in response["Location"]
 
 
 def test_latest_allowed_expiry_is_accepted(client, anna):
