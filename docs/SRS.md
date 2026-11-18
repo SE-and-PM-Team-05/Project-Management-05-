@@ -1,7 +1,7 @@
 # Software Requirements Specification
 ## For BizPartnerCheck
 
-Version 2.6 (combined team version)  
+Version 2.7 (combined team version)  
 Prepared by Luka Herceg, Elias Hoffstadt, WŚ and Tony  
 Practical Projects 2026/27  
 2026-10-22
@@ -26,6 +26,7 @@ Practical Projects 2026/27
 | Luka Herceg | 2026-11-04 | SRS added to the code repository as `docs/SRS.md`, which is now the master copy for the team and coding agents (review of PR #9) | 2.4 |
 | Team | 2026-11-16 | Third-party login decided: users log in through a self-hosted Keycloak (OpenID Connect), which owns passwords, password reset, email verification and login lockout; Django's password login remains only for the Super Admin on the admin site. Impact: registration and invitation acceptance no longer ask for a password; the Keycloak production host is open (C3, C10, FUNC-001, FUNC-002, FUNC-003, SEC-002, SEC-004, 3.5, OD-10) | 2.5 |
 | Antonia Cheriambanattu | 2026-11-18 | HFU check only for Austrian VAT numbers (team decision in the review of PR #14, SCRUM-50): the HFU service is queried by VAT number only, so other partners get NOT_APPLICABLE, also when an FN is given (FUNC-038) | 2.6 |
+| Luka Herceg | 2026-11-18 | FUNC-072: the sync log is visible to the operator only, not to organizations, who see data freshness through `dataTimestamp` and `stale` on each result (review of PR #18, SCRUM-63) | 2.7 |
 
 ## 1. Introduction
 BizPartnerCheck is a multi-tenant web service that runs the due-diligence checks a construction company must perform on a prospective business partner in one request, and stores the result as evidence. Section 1 states purpose, scope and process; Section 2 describes the business case, stakeholders, use cases and constraints; Section 3 lists the verifiable requirements; Section 4 explains how they are verified; Section 5 holds supporting material.
@@ -406,7 +407,7 @@ Because TRUE is not always the good outcome, each check states its **expected va
 |---|---|---|---|---|---|
 | REQ-FUNC-070 | The system shall import the BMF fake-company RSS feed at least once per day. | Sync log shows one successful run per day. | M | D | UC-09 |
 | REQ-FUNC-071 | The system shall query the HFU web service live per check; it shall import the list daily instead only if DLZ-AGH confirms a full-list export (REQ-POC-002, spike SCRUM-19: no export documented). | Decision documented; behaviour matches. | M | I | UC-09 |
-| REQ-FUNC-072 | Every sync run shall be logged with source, start and end time, outcome, number of entries, and the feed's own publication or last-modified timestamp; the log is read-only for organizations. | One log row per run with all fields. | M | T | UN-10 |
+| REQ-FUNC-072 | Every sync run shall be logged with source, start and end time, outcome, number of entries, and the feed's own publication or last-modified timestamp; only the operator can view the log and nobody can change it (organizations see how current a result is through `dataTimestamp` and `stale`). | One log row per run with all fields. | M | T | UN-10 |
 | REQ-FUNC-073 | A failed sync shall keep the last good copy; if the last success is older than 48 h, list-based checks add `stale: true`. | Simulated failure keeps data; flag appears after 48 h. | M | T | UN-10 |
 | REQ-FUNC-074 | The Super Admin should be able to view the sync log and start a sync manually. | Manual start creates a log row. | S | D | UC-10 |
 
