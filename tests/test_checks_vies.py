@@ -10,6 +10,7 @@ from checks import runner
 from checks.names import names_match, normalize_company_name
 from checks.results import Partner
 from checks.sources.base import SourceAdapter
+from checks.sources.bmf import BmfAdapter
 from checks.sources.vies import VIES_URL, ViesAdapter
 
 AT_PARTNER = Partner(vat_number="ATU12345678", company_name="Muster Bau GmbH")
@@ -235,7 +236,7 @@ def test_req_func_038_source_that_does_not_apply_is_not_applicable():
 def test_req_maint_003_vies_is_registered():
     from checks.sources import ADAPTERS
 
-    assert [type(a) for a in ADAPTERS] == [ViesAdapter]
+    assert [type(a) for a in ADAPTERS] == [ViesAdapter, BmfAdapter]
 
 
 # --- Added in the SRS review ---

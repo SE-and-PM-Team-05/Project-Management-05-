@@ -89,7 +89,7 @@ def test_req_func_045_response_has_appendix_b_shape(api, vies):
     assert body["reference"] == "PO-4711"
     assert "no liability" in body["disclaimer"]  # REQ-FUNC-048
     # Only the checks implemented so far; nothing invented for the others.
-    assert [c["check"] for c in body["checks"]] == ["vatValid", "nameMatchesVat"]
+    assert [c["check"] for c in body["checks"]] == ["vatValid", "nameMatchesVat", "listedAsFakeCompany"]
 
 
 def test_req_func_031_032_valid_vat_and_matching_name(api, vies):
@@ -251,6 +251,7 @@ def test_req_rel_004_check_is_stored_with_all_results(api, vies, request_user):
     assert [(r.check_name, r.result) for r in stored.results.all()] == [
         ("vatValid", "TRUE"),
         ("nameMatchesVat", "TRUE"),
+        ("listedAsFakeCompany", "UNKNOWN"),  # no list sync in this test
     ]
     # The response is exactly what was stored.
     assert {**stored.to_json(), "disclaimer": body["disclaimer"]} == body
@@ -272,7 +273,7 @@ def test_req_func_041_each_check_creates_a_new_record(api, vies):
     second = post(api, VALID_INPUT).json()["requestId"]
     assert first != second
     assert CheckRequest.objects.count() == 2
-    assert CheckRequestResult.objects.count() == 4
+    assert CheckRequestResult.objects.count() == 6
 
 
 @pytest.mark.parametrize("data", [{}, {"vatNumber": "ATU1", "companyName": "X"}])
