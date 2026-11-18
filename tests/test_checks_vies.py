@@ -119,6 +119,41 @@ def test_req_int_013_timeout_passed_to_requests_stays_within_budget():
     assert 0 < post.call_args.kwargs["timeout"] <= 8
 
 
+# --- Requester VAT number and reference (SCRUM-61, REQ-FUNC-050) ---
+
+REQUESTING_PARTNER = Partner(
+    vat_number="ATU12345678", company_name="Muster Bau GmbH", requesting_organization_vat_number="ATU99999999"
+)
+
+
+def test_req_func_050_requester_vat_number_is_sent_and_reference_reported():
+    answer = valid_answer()
+    answer.json.return_value["requestIdentifier"] = "WAPIAAAAZ1b2c3d4"
+    results, post = run_vies(REQUESTING_PARTNER, answer)
+    assert post.call_args.kwargs["json"] == {
+        "countryCode": "AT",
+        "vatNumber": "U12345678",
+        "requesterMemberStateCode": "AT",
+        "requesterNumber": "U99999999",
+    }
+    assert results["vatValid"].details["requestIdentifier"] == "WAPIAAAAZ1b2c3d4"
+
+
+def test_req_func_050_rejected_requester_is_left_out_and_the_check_still_runs():
+    rejected = vies_response(status=400, actionSucceed=False, errorWrappers=[{"error": "INVALID_REQUESTER_INFO"}])
+    results, post = run_vies(REQUESTING_PARTNER, rejected, valid_answer())
+    assert post.call_count == 2
+    assert "requesterNumber" not in post.call_args.kwargs["json"]
+    assert results["vatValid"].result == "TRUE"
+
+
+def test_req_func_050_other_vies_error_is_not_asked_again_without_requester():
+    error = vies_response(status=200, actionSucceed=False, errorWrappers=[{"error": "MS_UNAVAILABLE"}])
+    results, post = run_vies(REQUESTING_PARTNER, error)
+    assert post.call_count == 1
+    assert results["vatValid"].details == {"error": "MS_UNAVAILABLE"}
+
+
 # --- nameMatchesVat (REQ-FUNC-032) ---
 
 
