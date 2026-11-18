@@ -3,7 +3,7 @@
 Practical Projects 2026/27 (Project Management and Software Engineering). A 5-person student team builds BizPartnerCheck, a multi-tenant web service that automates due-diligence checks on business partners for Austrian construction companies, using Scrum.
 
 ## Key facts
-- Requirements baseline: `docs/SRS.md` (v2.4, the merged team version); this repository copy is the one to read and update, with every change in its Revision History (REQ-CM-001).
+- Requirements baseline: `docs/SRS.md` (v2.5, the merged team version); this repository copy is the one to read and update, with every change in its Revision History (REQ-CM-001).
 - Backlog: Jira project key **SCRUM**; import file `BizPartnerCheck_Jira_Backlog.csv` (7 epics, 20 user stories, 6 tasks). CSV `S<n>` = `SCRUM-<16+n>`, epics `E1–E7` = `SCRUM-10–16`.
 - Sprints (2 weeks): Sprint 1 22.10.–05.11. · Sprint 2 05.11.–19.11. · Sprint 3 19.11.–03.12. · Sprint 4 03.12.–17.12. (MVP demo) · Sprint 5 17.12.–14.01. (holidays, final presentation).
 - Capacity: 6–10 h per person per week. Releases: R1 = workflow (Sprints 1–3), R2 = completion (Sprint 4), R3 = risk checks (stretch).

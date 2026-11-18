@@ -192,9 +192,13 @@ def test_req_int_012_body_that_is_not_a_json_object_returns_400(api, vies, body)
     vies.assert_not_called()
 
 
-def test_req_func_031_other_eu_number_is_accepted(api, vies):
-    assert post(api, {"vatNumber": "EL123456789", "companyName": "Ellas AE"}).status_code == 200
+def test_req_func_031_other_eu_number_is_accepted(api, vies, hfu):
+    response = post(api, {"vatNumber": "EL123456789", "companyName": "Ellas AE"})
+    assert response.status_code == 200
     assert vies.call_args.kwargs["json"] == {"countryCode": "EL", "vatNumber": "123456789"}
+    # HFU is asked by Austrian VAT number only (REQ-FUNC-038).
+    assert checks_of(response)["onHfuList"]["result"] == "NOT_APPLICABLE"
+    hfu.assert_not_called()
 
 
 # --- Authentication and permissions (REQ-INT-011, REQ-FUNC-012) ---

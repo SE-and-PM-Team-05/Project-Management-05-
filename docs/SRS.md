@@ -1,7 +1,7 @@
 # Software Requirements Specification
 ## For BizPartnerCheck
 
-Version 2.4 (combined team version)  
+Version 2.5 (combined team version)  
 Prepared by Luka Herceg, Elias Hoffstadt, WŚ and Tony  
 Practical Projects 2026/27  
 2026-10-22
@@ -24,6 +24,7 @@ Practical Projects 2026/27
 | Team | 2026-11-04 | Hosting decided (OD-08 closed): app on Render, database on Neon, email via Brevo SMTP, all in EU regions (C3, A5, 3.1.3, 3.5) | 2.3 |
 | Luka Herceg | 2026-11-04 | Brevo sender is temporarily Luka Herceg's private email address; it must be changed to a team email address (later: an address on the team's own domain) before the app is used beyond testing (OD-08) | 2.4 |
 | Luka Herceg | 2026-11-04 | SRS added to the code repository as `docs/SRS.md`, which is now the master copy for the team and coding agents (review of PR #9) | 2.4 |
+| Antonia Cheriambanattu | 2026-11-18 | HFU check only for Austrian VAT numbers (team decision in the review of PR #14, SCRUM-50): the HFU service is queried by VAT number only, so other partners get NOT_APPLICABLE, also when an FN is given (FUNC-038) | 2.5 |
 
 ## 1. Introduction
 BizPartnerCheck is a multi-tenant web service that runs the due-diligence checks a construction company must perform on a prospective business partner in one request, and stores the result as evidence. Section 1 states purpose, scope and process; Section 2 describes the business case, stakeholders, use cases and constraints; Section 3 lists the verifiable requirements; Section 4 explains how they are verified; Section 5 holds supporting material.
@@ -360,7 +361,7 @@ Because TRUE is not always the good outcome, each check states its **expected va
 | REQ-FUNC-035 | **inCompanyRegister:** for Austrian partners the system shall look up the Firmenbuch by FN, or by name and VAT, and report FN, registered name and legal form. | Active → TRUE; deleted or not found → FALSE; several matches → UNKNOWN / AMBIGUOUS_MATCH. | M | T | UN-02 |
 | REQ-FUNC-036 | **inBusinessLicenseRegister:** for Austrian partners the system shall look up GISA and list all active licenses with the responsible person. | Company with licenses → TRUE plus list; none → FALSE. | M | T | UN-02 |
 | REQ-FUNC-037 | **hasRequiredLicenses:** if license codes are given, the result is TRUE only if each is active in GISA, otherwise FALSE naming the missing ones; without codes NOT_APPLICABLE. Which licenses are "necessary" is decided by the requester. | One missing license → FALSE naming it. | M | T | UC-04 |
-| REQ-FUNC-038 | A partner counts as Austrian if its VAT number starts with "ATU" or an FN is given; for others, checks 033 and 035…037 return NOT_APPLICABLE. | German VAT without FN → 031, 032, 034 run; others NOT_APPLICABLE. | M | T | UN-06, A3 |
+| REQ-FUNC-038 | A partner counts as Austrian if its VAT number starts with "ATU" or an FN is given; for others, checks 033 and 035…037 return NOT_APPLICABLE. Check 034 runs only if the VAT number starts with "ATU", because the HFU service is queried by VAT number only (FUNC-034); otherwise it returns NOT_APPLICABLE. | German VAT without FN → 031, 032 run; others NOT_APPLICABLE. Non-Austrian VAT with an FN → 034 NOT_APPLICABLE. | M | T | UN-06, A3 |
 | REQ-FUNC-039 | Checks shall run in parallel and independently; the failure of one source shall never stop the others or the storing of the request. | GISA stubbed to fail → all other checks still TRUE/FALSE. | M | T | UN-05 |
 | REQ-FUNC-040 | The system shall not re-check partners automatically, not even after a source sync; a re-check is a new request started by a user or client system and may reference the earlier request ID. | Advancing time or a sync creates no new result (code inspection and test). | M | I | R2 |
 | REQ-FUNC-041 | Every request creates a new, distinct record; a later check never overwrites an earlier one. | Two checks of the same partner give two records with different timestamps. | M | T | UN-01 |

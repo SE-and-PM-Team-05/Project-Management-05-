@@ -1,5 +1,7 @@
 """The common interface of all source adapters (REQ-MAINT-003)."""
 
+from ..results import SOURCE_UNAVAILABLE, UNKNOWN, CheckResult, utc_now
+
 
 class SourceAdapter:
     """One external data source, e.g. VIES.
@@ -24,3 +26,22 @@ class SourceAdapter:
         unavailable source is reported as UNKNOWN / SOURCE_UNAVAILABLE, never raised.
         """
         raise NotImplementedError
+
+    # Helpers, so every adapter reports results the same way.
+
+    def result(self, check, value, data_timestamp, reason=None, details=None):
+        """A CheckResult of this source."""
+        return CheckResult(check, value, self.source, data_timestamp, reason=reason, details=details or {})
+
+    def unknown(self, check, reason, data_timestamp=None, details=None):
+        """UNKNOWN for one check, with a reason such as NO_DETAILS_FOUND."""
+        return self.result(check, UNKNOWN, data_timestamp or utc_now(), reason=reason, details=details)
+
+    def unavailable(self, error_code=None, data_timestamp=None):
+        """UNKNOWN / SOURCE_UNAVAILABLE for all checks of this source, e.g. after a timeout.
+
+        `error_code` is a short, language-neutral reason (e.g. "TIMEOUT") stored in the details.
+        """
+        details = {"error": error_code} if error_code else {}
+        moment = data_timestamp or utc_now()
+        return [self.unknown(name, SOURCE_UNAVAILABLE, moment, details) for name in self.checks]

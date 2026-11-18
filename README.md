@@ -4,7 +4,7 @@ Team 05 · Software Engineering and Project Management · IMC Krems · Practical
 
 BizPartnerCheck is a multi-tenant web service that automates the due-diligence checks an Austrian construction company must run before contracting a business partner (VAT number, fake-company list, HFU list, company register, business licenses) and stores every check as evidence.
 
-- **Requirements:** [SRS v2.4](docs/SRS.md) (combined team version); changes follow REQ-CM-001 and are recorded in its Revision History
+- **Requirements:** [SRS v2.5](docs/SRS.md) (combined team version); changes follow REQ-CM-001 and are recorded in its Revision History
 - **Backlog:** Jira project [SCRUM](https://sepmimc.atlassian.net/jira/software/projects/SCRUM/boards/1)
 - **AI agent instructions:** [AGENTS.md](AGENTS.md)
 
