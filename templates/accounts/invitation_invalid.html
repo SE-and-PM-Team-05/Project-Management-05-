@@ -3,7 +3,13 @@
 {% block content %}
 <h1>Invitation Invalid</h1>
 
+{% if wrong_account %}
+<p>This invitation is for {{ invited_email }}, and only an account with that email address that doesn't belong to an organization yet can accept it.</p>
+
+<p>Log out and log in again with that email address.</p>
+{% else %}
 <p>This invitation link is invalid, expired, revoked, or has already been used.</p>
 
 <p>Please contact your organization administrator for a new invitation.</p>
+{% endif %}
 {% endblock %}
