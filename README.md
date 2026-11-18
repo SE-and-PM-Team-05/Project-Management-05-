@@ -4,7 +4,7 @@ Team 05 · Software Engineering and Project Management · IMC Krems · Practical
 
 BizPartnerCheck is a multi-tenant web service that automates the due-diligence checks an Austrian construction company must run before contracting a business partner (VAT number, fake-company list, HFU list, company register, business licenses) and stores every check as evidence.
 
-- **Requirements:** [SRS v2.6](docs/SRS.md) (combined team version); changes follow REQ-CM-001 and are recorded in its Revision History
+- **Requirements:** [SRS v2.7](docs/SRS.md) (combined team version); changes follow REQ-CM-001 and are recorded in its Revision History
 - **Backlog:** Jira project [SCRUM](https://sepmimc.atlassian.net/jira/software/projects/SCRUM/boards/1)
 - **AI agent instructions:** [AGENTS.md](AGENTS.md)
 
@@ -246,7 +246,7 @@ curl -X POST https://<your-service>.onrender.com/api/v1/checks \
 
 ### Rate limit
 
-Each token may make **200 requests per minute** (REQ-SEC-003), counted over all endpoints. The minute starts with the first call after the previous minute ended. Every answer to a token call carries the remaining quota:
+Each token may make **200 requests per minute** (REQ-SEC-003), counted over all endpoints. The minute starts with the first call after the previous minute ended. It is a fixed window, as the SRS describes it: a client can make 200 calls at the end of one window and 200 more right at the start of the next. Every answer to a token call carries the remaining quota:
 
 | Header | Meaning |
 |---|---|
@@ -304,10 +304,10 @@ Errors return `{"error": {"code": "…", "message": "…", "fields": {…}}}`:
 | 400 | `INVALID_JSON` | Body is not JSON. |
 | 401 | `NOT_AUTHENTICATED` | No `Authorization` header and not logged in. |
 | 401 | `INVALID_TOKEN` | The Bearer token is unknown, revoked or expired, its owner is deactivated, or the header is not `Bearer <token>`. |
-| 429 | `RATE_LIMIT_EXCEEDED` | More than 200 calls in a minute with this token; see [Rate limit](#rate-limit). Nothing is stored. |
 | 403 | `PERMISSION_DENIED` | User lacks the Request User role. |
 | 403 | `CSRF_FAILED` | Session call without `X-CSRFToken` header. |
 | 405 | `METHOD_NOT_ALLOWED` | Anything other than POST. |
+| 429 | `RATE_LIMIT_EXCEEDED` | More than 200 calls in a minute with this token; see [Rate limit](#rate-limit). Nothing is stored. |
 | 500 | `INTERNAL_ERROR` | Unexpected error on our side, e.g. the request could not be stored; nothing is stored then. Details only in the server log. |
 
 **Try it locally:** log in at http://localhost:8000/ (through Keycloak) with a Request User, open the browser console on that page and run:

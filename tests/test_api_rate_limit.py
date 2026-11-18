@@ -5,10 +5,13 @@ a rejected check is not run and not stored. VIES is always mocked.
 """
 
 import json
+import threading
+from collections import Counter
 from datetime import timedelta
 from unittest import mock
 
 import pytest
+from django.db import connection
 from django.test import Client
 from django.utils import timezone
 
@@ -190,3 +193,42 @@ def test_web_session_calls_are_not_limited_per_token(client, vies, anna):
 
     assert response.status_code == 200
     assert "X-RateLimit-Limit" not in response
+
+
+@pytest.mark.django_db(transaction=True)
+def test_req_sec_003_limit_holds_under_parallel_calls(anna_token):
+    """210 calls from 10 threads at once: exactly 200 succeed and 10 get 429.
+
+    Each thread has its own database connection, like separate gunicorn workers, so this shows that the row lock in
+    accounts.api_auth counts every call exactly once. transaction=True lets the threads see the committed token.
+    """
+    token, value = anna_token
+    threads, calls_per_thread = 10, 21
+    start_together = threading.Barrier(threads, timeout=30)
+    statuses, errors = [], []
+    record = threading.Lock()
+
+    def make_calls():
+        client = Client()
+        try:
+            start_together.wait()
+            for _ in range(calls_per_thread):
+                status = list_tokens(client, value).status_code
+                with record:
+                    statuses.append(status)
+        except Exception as error:  # Reported below; an exception inside a thread would otherwise be lost.
+            with record:
+                errors.append(repr(error))
+        finally:
+            connection.close()
+
+    workers = [threading.Thread(target=make_calls) for _ in range(threads)]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(timeout=120)
+
+    assert not errors
+    assert Counter(statuses) == {200: RATE_LIMIT, 429: threads * calls_per_thread - RATE_LIMIT}
+    token.refresh_from_db()
+    assert token.rate_window_count == RATE_LIMIT
