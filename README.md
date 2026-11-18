@@ -173,6 +173,16 @@ A push to `main` deploys only after CI is green: the `deploy` job in `.github/wo
 4. **Deploy hook:** Render → the service → Settings → Deploy Hook → copy the URL. In GitHub: repository Settings → Secrets and variables → Actions → New repository secret named `RENDER_DEPLOY_HOOK_URL` with that URL. Without it the `deploy` job only prints a warning.
 5. **First deploy:** Render → Manual Deploy → Deploy latest commit (later deploys happen automatically after green CI on `main`). Then open `https://<your-service>.onrender.com/healthz`; it should answer `ok`.
 6. **Super Admin:** the free plan has no shell on the server, so create the Super Admin from your own machine against the Neon database. In a terminal in this folder with `.venv` active, set `DATABASE_URL` to the Neon connection string for that terminal only, run `python manage.py create_superadmin you@example.com`, and log in at `https://<your-service>.onrender.com/admin/` with the one-time password it prints.
+7. **Daily BMF sync:** in GitHub, add a repository secret named `DATABASE_URL` with the Neon connection string from step 1 (Settings → Secrets and variables → Actions). Then start the first import by hand: Actions → **Daily BMF sync** → Run workflow. Until it has run once, the fake-company check answers `UNKNOWN`.
+
+### Daily BMF sync
+
+`.github/workflows/sync-bmf.yml` runs `python manage.py sync_bmf` every day at 03:17 UTC, straight against the Neon database (REQ-FUNC-070). The job downloads the BMF list of sham companies, replaces the stored list in one transaction and writes one row to the sync log, which the Super Admin sees under `/admin/` → Sync logs (REQ-FUNC-072).
+
+- **A failed run** (BMF unreachable, a changed page layout, a list less than half as long as the last one) changes nothing: checks keep using the last good copy, the sync log gets a `failed` row with the reason, and the run turns red in GitHub Actions. GitHub emails a failed scheduled run to whoever last changed the workflow's `cron` line. After 48 h without a successful run, fake-company results carry `stale: true` (REQ-FUNC-073).
+- **A much shorter list** is rejected on purpose, because it usually means a broken download. If BMF really did shorten the list, run `python manage.py sync_bmf --allow-shrink` once from your own machine against the Neon database, as in step 6.
+- **Locally**, `python manage.py sync_bmf` fills your own database with the real list.
+- GitHub only runs scheduled workflows from `main`, and it pauses them after 60 days without a commit in a public repository. Re-enable the workflow under Actions if that happens.
 
 ## API
 
