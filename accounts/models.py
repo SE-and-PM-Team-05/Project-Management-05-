@@ -30,7 +30,9 @@ class Organization(models.Model):
     name = models.CharField(max_length=200)
     address = models.TextField()
     vat_number = models.CharField("VAT number", max_length=14)
-    is_verified = models.BooleanField(default=False, help_text="Set when the registration email link is opened.")
+    is_verified = models.BooleanField(
+        default=False, help_text="Set when the organization is registered by a user whose email Keycloak has verified."
+    )
     terms_accepted_at = models.DateTimeField()
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -125,6 +127,10 @@ class ApiToken(models.Model):
     # Tokens never expire unless an expiry is set (REQ-FUNC-020).
     expires_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
+    # Rate limit (REQ-SEC-003): start of the token's current one-minute window and the calls accepted in it.
+    # Kept on the token row, so the row lock in accounts.api_auth makes the count exact across app processes.
+    rate_window_started_at = models.DateTimeField(null=True, blank=True)
+    rate_window_count = models.PositiveIntegerField(default=0)
 
     class Meta:
         ordering = ["-created_at", "-id"]
