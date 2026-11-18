@@ -9,7 +9,7 @@ POC note for REQ-POC-001 (SCRUM-18) and integration note required by REQ-INT-016
 | **Check** | `listedAsFakeCompany` (REQ-FUNC-033) |
 | **Access** | `GET https://service.bmf.gv.at/service/allg/lsu/rss_lsu.asp`, free, no account or key |
 | **Format** | RSS 2.0 XML, `encoding="iso-8859-1"`, about 1 MB; the whole list in one response |
-| **Freshness** | Imported once a day (REQ-FUNC-070), not queried per check |
+| **Freshness** | Imported once a day (REQ-FUNC-070) by `python manage.py sync_bmf` (SCRUM-64), not queried per check |
 | **Feed timestamp** | `<lastBuildDate>` in the channel, date only (e.g. `04 Nov 2026`); the HTTP response has no `Last-Modified` or `ETag`. Store `lastBuildDate` as the feed's own timestamp in the sync log (REQ-FUNC-072) |
 
 ## Entries
@@ -52,6 +52,10 @@ dates of listing) and do not store dates of birth unless a requirement needs the
 
 - The `description` is HTML inside XML; fields are read with regular expressions, so a change to BMF's markup can
   break the import. The sync must fail loudly and keep the last good copy (REQ-FUNC-073, REQ-REL-002).
+- The import (`checks/sources/bmf_feed.py`) uses the POC's patterns, and also allows tags between a label and its
+  value. It fails the whole run if an entry has no name or no publication date, if `lastBuildDate` can't be read,
+  if no entry has a UID or none has an FN (a sign of changed markup), or if the list has less than half the entries
+  of the last good copy (`--allow-shrink` overrides this once). See "Daily BMF sync" in the README.
 - `requests` is used for both calls: on Windows, Python's built-in `urllib` can't verify the EU VIES server's
   certificate chain.
 

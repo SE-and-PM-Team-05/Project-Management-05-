@@ -224,6 +224,17 @@ A push to `main` deploys only after CI is green: the `deploy` job in `.github/wo
       **Instance type:** Keycloak is a Java server and needs more memory than the app. Render's free instance has 512 MB and sleeps when idle, which makes Keycloak slow to start or fail to start; if the free instance doesn't stay up, use a paid instance with more memory (team decision, SRS OD-10).
    4. **Deploy**, then open `https://<name>.onrender.com/admin/`, log in with the bootstrap admin and switch to the `bizpartnercheck` realm. Under **Realm settings → Email**, enter the Brevo SMTP settings from step 2 (host `smtp-relay.brevo.com`, port `2525`, StartTLS on, the SMTP login and key, and the verified sender as *From*), so Keycloak can send verification and password reset emails.
    5. **App:** in the app service from step 3, set `KEYCLOAK_REALM_URL` and `KEYCLOAK_CLIENT_SECRET` (table above) and deploy it. Test it: open the app, click Register, sign up, open the verification email, and register an organization.
+8. **Daily BMF sync** (SCRUM-64): in GitHub, add a repository secret named `DATABASE_URL` with the Neon connection string from step 1 (Settings → Secrets and variables → Actions). Deploy the app first (step 5), so its migrations, including `checks.0002` with the fake-company list and the sync log, are applied on Neon: without those tables the sync crashes before it can write a sync log row. Then start the first import by hand: Actions → **Daily BMF sync** → Run workflow, and check that the run is green and `/admin/` → Sync logs shows a `success` row. Until it has run once, the fake-company check answers `UNKNOWN`.
+
+### Daily BMF sync
+
+`.github/workflows/sync-bmf.yml` runs `python manage.py sync_bmf` every day at 03:17 UTC, straight against the Neon database (REQ-FUNC-070). The job downloads the BMF list of sham companies, replaces the stored list in one transaction and writes one row to the sync log, which the Super Admin sees under `/admin/` → Sync logs (REQ-FUNC-072).
+
+- **A failed run** (BMF unreachable, a changed page layout, a list less than half as long as the last one) changes nothing: checks keep using the last good copy, the sync log gets a `failed` row with the reason, and the run turns red in GitHub Actions. GitHub emails a failed scheduled run to whoever last changed the workflow's `cron` line. After 48 h without a successful run, fake-company results carry `stale: true` (REQ-FUNC-073).
+- **A much shorter list** is rejected on purpose, because it usually means a broken download. If BMF really did shorten the list, run `python manage.py sync_bmf --allow-shrink` once from your own machine against the Neon database, as in step 6.
+- **Settings:** the job sets placeholder values for `DJANGO_SECRET_KEY` and `KEYCLOAK_CLIENT_SECRET`, because `config/settings.py` refuses to load without them when debug is off; the import serves no web requests and logs nobody in. If a later change makes another setting required, add a placeholder to `sync-bmf.yml` too: `tests/test_sync_workflow.py` loads the settings with exactly the workflow's variables and fails otherwise.
+- **Locally**, `python manage.py sync_bmf` fills your own database with the real list.
+- GitHub only runs scheduled workflows from `main`, and it pauses them after 60 days without a commit in a public repository. Re-enable the workflow under Actions if that happens.
 
 ## API
 

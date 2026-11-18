@@ -1,0 +1,57 @@
+name: Daily BMF sync
+
+# Imports the BMF list of sham companies once a day (REQ-FUNC-070) straight into the production database,
+# like `create_superadmin` in README.md: Render's free plan has no shell or scheduler, and this way the
+# sleeping web service doesn't need to wake up. A failed import turns the run red and keeps the last good
+# copy (REQ-FUNC-073); every run, red or green, writes one sync log row (REQ-FUNC-072).
+# Setup: the repository secret DATABASE_URL (see "Daily BMF sync" in README.md).
+
+on:
+  schedule:
+    # Daily at 03:17 UTC. GitHub may start scheduled runs late; the stale flag only appears after 48 h.
+    - cron: "17 3 * * *"
+  # Manual start: Actions → Daily BMF sync → Run workflow.
+  workflow_dispatch:
+
+<<<<<<< Updated upstream
+=======
+# The job only reads the repository; it writes to the database through DATABASE_URL, not through GitHub.
+permissions:
+  contents: read
+
+>>>>>>> Stashed changes
+# Never two imports at the same time.
+concurrency:
+  group: sync-bmf
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Import the BMF list
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+<<<<<<< Updated upstream
+          # Settings need a secret key when debug is off; the import serves no web requests, so any value works.
+          DJANGO_SECRET_KEY: sync-job-only-not-a-secret-serves-no-web-requests-0123456789
+=======
+          # With debug off, config/settings.py refuses to load without these two. The import serves no web requests
+          # and logs nobody in, so any value works (tests/test_sync_workflow.py checks that the settings load).
+          DJANGO_SECRET_KEY: sync-job-only-not-a-secret-serves-no-web-requests-0123456789
+          KEYCLOAK_CLIENT_SECRET: sync-job-only-not-a-secret
+>>>>>>> Stashed changes
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::The DATABASE_URL secret is not set, so no sync ran. See 'Daily BMF sync' in README.md."
+            exit 1
+          fi
+          python manage.py sync_bmf
