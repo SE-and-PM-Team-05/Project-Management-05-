@@ -10,8 +10,9 @@ Change this page in a pull request before changing the keys in code, so all thre
 ## Rules (same as the existing VIES, BMF and HFU checks)
 
 - Keys are camelCase English; values are copied from the register as they are (no translation).
-- Empty values are left out, as in `entry_details` in `checks/sources/bmf.py`. Lists are always present when
-  this page lists them, even when empty, because an empty list is itself the answer.
+- Empty strings and missing values are left out, as in `entry_details` in `checks/sources/bmf.py`. The one
+  exception is the lists named on this page (`licenses`, `requiredLicenseCodes`, `missingLicenseCodes`): they
+  are always included when the table says so, even when empty, because an empty list is itself the answer.
 - Dates are ISO 8601 (`2026-11-19`).
 - The FN is called `companyRegisterNumber`, as in the check input and the BMF check, written like the input
   stores it: no spaces, lowercase check letter, no "FN" prefix (`123456a`).
@@ -33,13 +34,17 @@ Change this page in a pull request before changing the keys in code, so all thre
 
 - TRUE: found and `status` is `"active"`.
 - FALSE: found and `"deleted"`, or not found. When nothing is found, `details` is empty.
+- `status` has only these two values. Any other state the register reports (for example a company in
+  liquidation) is still a registration, so `status` is `"active"` and the register's own wording goes in
+  `statusText` (string, only in that case).
+- Firmenbuch unavailable: UNKNOWN / SOURCE_UNAVAILABLE, no `details`.
 
 ## `inBusinessLicenseRegister` (GISA, REQ-FUNC-036)
 
 | Key | Type | When | Example |
 |---|---|---|---|
 | `licenses` | list of licenses (below) | always for TRUE and FALSE | |
-| `matchedBy` | `"vatNumber"` or `"companyRegisterNumber"` | partner found in GISA | `"vatNumber"` |
+| `matchedBy` | `"vatNumber"`, `"companyRegisterNumber"` or `"name"` | partner found in GISA | `"vatNumber"` |
 
 Each license (only active licenses are listed):
 
@@ -51,7 +56,11 @@ Each license (only active licenses are listed):
 | `responsiblePerson` | string | `"Maria Muster"` |
 | `activeSince` | date | `"2019-05-02"` |
 
-- TRUE: at least one active license. FALSE: `licenses` is `[]`.
+- TRUE: at least one active license. FALSE: `licenses` is `[]`; if the partner isn't in GISA at all,
+  `matchedBy` is left out.
+- A match by name only is never definite (SRS UC-04, 4c): the result is UNKNOWN / AMBIGUOUS_MATCH with
+  `matchedBy: "name"` and the licenses found, so a person can judge.
+- GISA unavailable: UNKNOWN / SOURCE_UNAVAILABLE, no `details`; `hasRequiredLicenses` is then UNKNOWN too.
 
 ## `hasRequiredLicenses` (GISA, REQ-FUNC-037)
 
@@ -62,6 +71,9 @@ Each license (only active licenses are listed):
 
 - TRUE: `missingLicenseCodes` is `[]`. FALSE: it names the missing codes. Without `requiredLicenseCodes` in
   the request the check is NOT_APPLICABLE.
+- Codes are compared ignoring case and surrounding spaces; `requiredLicenseCodes` and `missingLicenseCodes`
+  repeat the codes exactly as the caller sent them. Which codes count as "necessary" stays the caller's choice
+  (SRS OD-03).
 
 ## Example
 
