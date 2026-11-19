@@ -1,7 +1,7 @@
 # Software Requirements Specification
 ## For BizPartnerCheck
 
-Version 2.8 (combined team version)  
+Version 2.9 (combined team version)  
 Prepared by Luka Herceg, Elias Hoffstadt, WŚ and Tony  
 Practical Projects 2026/27  
 2026-10-22
@@ -28,6 +28,7 @@ Practical Projects 2026/27
 | Antonia Cheriambanattu | 2026-11-18 | HFU check only for Austrian VAT numbers (team decision in the review of PR #14, SCRUM-50): the HFU service is queried by VAT number only, so other partners get NOT_APPLICABLE, also when an FN is given (FUNC-038) | 2.6 |
 | Luka Herceg | 2026-11-18 | FUNC-072: the sync log is visible to the operator only, not to organizations, who see data freshness through `dataTimestamp` and `stale` on each result (review of PR #18, SCRUM-63) | 2.7 |
 | Team | 2026-11-19 | Customer feedback from the Sprint 2 review: a check needs only the VAT number, because typing the company name causes mismatches from spelling, capital letters and umlauts. companyName becomes optional; without it `nameMatchesVat` is NOT_APPLICABLE, the BMF check skips the name step and the Firmenbuch is searched by VAT number (1.2, UC-04, Firmenbuch row in 3.1, check table in 3.2, FUNC-030, FUNC-032, FUNC-033, FUNC-035, Appendix C C-03; SCRUM-93). The organization's own VAT number given at registration is now verified as a Must, because it is sent to VIES as the requester on every check (FUNC-004 S → M, moved from Sprint 4 to Sprint 3 in 2.8; SCRUM-52) | 2.8 |
+| Team | 2026-11-19 | GISA and Firmenbuch access granted; the Firmenbuch can be searched by VAT number. A1 confirmed and OD-06 closed; the test-double fallback is no longer needed for Sprint 3 (SCRUM-20) | 2.9 |
 
 ## 1. Introduction
 BizPartnerCheck is a multi-tenant web service that runs the due-diligence checks a construction company must perform on a prospective business partner in one request, and stores the result as evidence. Section 1 states purpose, scope and process; Section 2 describes the business case, stakeholders, use cases and constraints; Section 3 lists the verifiable requirements; Section 4 explains how they are verified; Section 5 holds supporting material.
@@ -225,7 +226,7 @@ Roles are additive: one user may hold several roles, and the first user of a new
 
 | ID | Assumption / dependency | Impact if false |
 |---|---|---|
-| A1 | The team obtains access to GISA and Firmenbuch (account, ID Austria, keys) by Sprint 3 (REQ-POC-003). | Those checks return UNKNOWN / SOURCE_UNAVAILABLE and are demonstrated against test doubles. |
+| A1 | **Confirmed 2026-11-19:** the team has access to GISA and the Firmenbuch (ID Austria login held by Maryam Salem), and the Firmenbuch can be searched by VAT number (REQ-POC-003, FUNC-035). | If access is withdrawn, those checks return UNKNOWN / SOURCE_UNAVAILABLE and are demonstrated against test doubles. |
 | A2 | VIES, the BMF RSS feed and the ÖGK HFU service stay free and reachable. | The affected check is degraded; the last synced copy is used where possible. |
 | A3 | About 80 % of checked partners are Austrian (R2). | More NOT_APPLICABLE results; value per check drops. |
 | A4 | Fake-company entries contain VAT number or FN, so matching need not rely on names (the HFU service is queried by VAT number only, see FUNC-034). | Name-only matching gives false hits; more AMBIGUOUS_MATCH results. |
@@ -637,7 +638,7 @@ BO-6 (workflow on time) is covered by REQ-DEAD-001, REQ-POC-001…003 and the ap
 | OD-03 | Which GISA trade codes count as "necessary licenses", or does the caller always supply them? | FUNC-037 | Customer |
 | OD-04 | Meeting rhythm (proposed: end of every sprint) and final acceptance date. | A6, DEAD-001 | Customer and team |
 | OD-05 | HFU: the web service documentation shows no full-list export; DLZ-AGH was asked on 04.11.2026 and the reply is pending. BMF feed: exact fields (VAT present?) still to confirm. | FUNC-071, A4 | Team (POC-001/002, SCRUM-19) |
-| OD-06 | Access via ID Austria (risk to R1): Maryam Salem holds the ID Austria login; the GISA application was submitted on 04.11.2026; the Firmenbuch request and the approval times are still open (SCRUM-20). | A1, POC-003 | Team |
+| OD-06 | **Closed 2026-11-19:** access to GISA and the Firmenbuch is granted; Maryam Salem holds the ID Austria login; the Firmenbuch can be searched by VAT number, which FUNC-035 relies on (SCRUM-20). | A1, POC-003 | Team |
 | OD-07 | Proposed QoS targets (availability, response times) and capacity figures to be confirmed. | 3.3 | Customer |
 | OD-08 | **Closed 2026-11-04:** app on Render, database on Neon, email via Brevo (SCRUM-42). Remaining: the Brevo sender is temporarily Luka Herceg's private email address and must be changed to a team email address, later one on the team's own domain. | C3, A5, COST-001 | Team |
 | OD-09 | Final wording of the no-liability terms and legal basis for processing register person data (GDPR). | COMP-001, 003 | Customer, legal advice |
