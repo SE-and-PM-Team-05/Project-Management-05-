@@ -69,6 +69,7 @@ def post(client, body):
 
 
 def test_user_creates_own_token_and_sees_value_once(client, anna):
+    """Verifies REQ-FUNC-020, REQ-FUNC-022."""
     client = api_client(client, anna)
 
     response = post(client, {"name": "ERP prod"})
@@ -96,12 +97,14 @@ def test_user_creates_own_token_and_sees_value_once(client, anna):
 
 
 def test_each_token_value_is_different(client, anna):
+    """Verifies REQ-SEC-002."""
     client = api_client(client, anna)
     values = {post(client, {"name": f"t{i}"}).json()["token"] for i in range(5)}
     assert len(values) == 5
 
 
 def test_org_admin_creates_token_for_another_user(client, admin, anna):
+    """Verifies REQ-FUNC-020."""
     client = api_client(client, admin)
 
     response = post(client, {"name": "Anna's ERP", "userId": anna.pk})
@@ -112,6 +115,7 @@ def test_org_admin_creates_token_for_another_user(client, admin, anna):
 
 
 def test_user_cannot_create_token_for_someone_else(client, anna, ben):
+    """Verifies REQ-FUNC-012, REQ-FUNC-020."""
     client = api_client(client, anna)
 
     response = post(client, {"name": "sneaky", "userId": ben.pk})
@@ -122,6 +126,7 @@ def test_user_cannot_create_token_for_someone_else(client, anna, ben):
 
 
 def test_org_admin_cannot_create_token_for_other_organization(client, admin, other_org_user):
+    """Verifies REQ-FUNC-013."""
     client = api_client(client, admin)
 
     response = post(client, {"name": "x", "userId": other_org_user.pk})
@@ -132,6 +137,7 @@ def test_org_admin_cannot_create_token_for_other_organization(client, admin, oth
 
 
 def test_org_admin_cannot_create_token_for_deactivated_user(client, admin, anna):
+    """Verifies REQ-FUNC-020, REQ-FUNC-023."""
     anna.is_active = False
     anna.save()
     client = api_client(client, admin)
@@ -143,6 +149,7 @@ def test_org_admin_cannot_create_token_for_deactivated_user(client, admin, anna)
 
 
 def test_expiry_date_means_end_of_that_day(client, anna):
+    """Verifies REQ-FUNC-020."""
     client = api_client(client, anna)
     day = timezone.localdate() + timedelta(days=30)
 
@@ -155,6 +162,7 @@ def test_expiry_date_means_end_of_that_day(client, anna):
 
 
 def test_expiry_date_time_is_accepted(client, anna):
+    """Verifies REQ-FUNC-020."""
     client = api_client(client, anna)
 
     response = post(client, {"name": "temp", "expiresAt": "2099-01-01T12:00:00Z"})
@@ -180,6 +188,7 @@ def test_expiry_date_time_is_accepted(client, anna):
     ],
 )
 def test_invalid_input_is_rejected(client, anna, body, field):
+    """Verifies REQ-INT-012, REQ-SEC-005."""
     client = api_client(client, anna)
 
     response = post(client, body)
@@ -191,6 +200,7 @@ def test_invalid_input_is_rejected(client, anna, body, field):
 
 
 def test_invalid_json_is_rejected(client, anna):
+    """Verifies REQ-INT-012."""
     client = api_client(client, anna)
     response = client.post(URL, data="{", content_type="application/json")
     assert response.status_code == 400
@@ -201,6 +211,7 @@ def test_invalid_json_is_rejected(client, anna):
 
 
 def test_user_lists_only_own_tokens(client, anna, ben):
+    """Verifies REQ-FUNC-023."""
     ApiToken.issue(anna, "Anna's", created_by=anna)
     ApiToken.issue(ben, "Ben's", created_by=ben)
     client = api_client(client, anna)
@@ -212,6 +223,7 @@ def test_user_lists_only_own_tokens(client, anna, ben):
 
 
 def test_org_admin_lists_all_tokens_of_organization_only(client, admin, anna, ben, other_org_user):
+    """Verifies REQ-FUNC-013, REQ-FUNC-023."""
     ApiToken.issue(anna, "Anna's", created_by=anna)
     ApiToken.issue(ben, "Ben's", created_by=admin)
     ApiToken.issue(other_org_user, "Eve's", created_by=other_org_user)
@@ -223,6 +235,7 @@ def test_org_admin_lists_all_tokens_of_organization_only(client, admin, anna, be
 
 
 def test_list_shows_only_metadata(client, anna):
+    """Verifies REQ-FUNC-022."""
     token, value = ApiToken.issue(anna, "ERP", created_by=anna)
     client = api_client(client, anna)
 
@@ -247,6 +260,7 @@ def test_list_shows_only_metadata(client, anna):
 
 
 def test_owner_revokes_own_token(client, anna):
+    """Verifies REQ-FUNC-023."""
     token, _ = ApiToken.issue(anna, "ERP", created_by=anna)
     client = api_client(client, anna)
 
@@ -261,6 +275,7 @@ def test_owner_revokes_own_token(client, anna):
 
 
 def test_org_admin_revokes_any_token_of_organization(client, admin, anna):
+    """Verifies REQ-FUNC-023."""
     token, _ = ApiToken.issue(anna, "ERP", created_by=anna)
     client = api_client(client, admin)
 
@@ -270,6 +285,7 @@ def test_org_admin_revokes_any_token_of_organization(client, admin, anna):
 
 
 def test_user_cannot_revoke_someone_elses_token(client, anna, ben):
+    """Verifies REQ-FUNC-012, REQ-FUNC-023."""
     token, _ = ApiToken.issue(ben, "Ben's", created_by=ben)
     client = api_client(client, anna)
 
@@ -279,6 +295,7 @@ def test_user_cannot_revoke_someone_elses_token(client, anna, ben):
 
 
 def test_token_of_other_organization_is_404(client, admin, other_org_user):
+    """Verifies REQ-FUNC-013."""
     token, _ = ApiToken.issue(other_org_user, "Eve's", created_by=other_org_user)
     client = api_client(client, admin)
 
@@ -289,6 +306,7 @@ def test_token_of_other_organization_is_404(client, admin, other_org_user):
 
 
 def test_deactivating_user_revokes_all_their_tokens(client, admin, anna, ben):
+    """Verifies REQ-FUNC-023."""
     anna_token, _ = ApiToken.issue(anna, "ERP", created_by=anna)
     ben_token, _ = ApiToken.issue(ben, "Ben's", created_by=ben)
     client.force_login(admin)
@@ -307,6 +325,7 @@ def test_deactivating_user_revokes_all_their_tokens(client, admin, anna, ben):
 
 
 def test_deleting_user_deletes_their_tokens(client, admin, anna):
+    """Verifies REQ-FUNC-023."""
     ApiToken.issue(anna, "ERP", created_by=admin)
     client.force_login(admin)
 
@@ -316,6 +335,7 @@ def test_deleting_user_deletes_their_tokens(client, admin, anna):
 
 
 def test_expired_token_is_not_active(anna):
+    """Verifies REQ-FUNC-020."""
     token, _ = ApiToken.issue(anna, "old", created_by=anna, expires_at=timezone.now() - timedelta(seconds=1))
     assert not token.is_active()
 
@@ -324,12 +344,14 @@ def test_expired_token_is_not_active(anna):
 
 
 def test_anonymous_gets_401(client):
+    """Verifies REQ-INT-011."""
     assert client.get(URL).status_code == 401
     assert client.post(URL, data="{}", content_type="application/json").status_code == 401
     assert client.delete(f"{URL}/1").status_code == 401
 
 
 def test_super_admin_without_organization_gets_403(client, db):
+    """Verifies REQ-FUNC-012."""
     root = User.objects.create_superuser("root@example.com", "x")
     client.force_login(root)
     assert client.get(URL).status_code == 403
@@ -337,6 +359,7 @@ def test_super_admin_without_organization_gets_403(client, db):
 
 
 def test_session_call_without_csrf_header_is_rejected(client, anna):
+    """Verifies REQ-SEC-006."""
     client.force_login(anna)
     client.handler.enforce_csrf_checks = True
 
@@ -348,6 +371,7 @@ def test_session_call_without_csrf_header_is_rejected(client, anna):
 
 
 def test_wrong_method_gets_405(client, anna):
+    """Verifies REQ-INT-012."""
     client = api_client(client, anna)
     response = client.put(URL)
     assert response.status_code == 405
@@ -358,6 +382,7 @@ def test_wrong_method_gets_405(client, anna):
 
 
 def test_web_page_creates_token_and_shows_value_once(client, anna):
+    """Verifies REQ-FUNC-020, REQ-FUNC-022."""
     client.force_login(anna)
 
     response = client.post(reverse("api_tokens"), {"name": "ERP prod", "owner": anna.pk})
@@ -373,6 +398,7 @@ def test_web_page_creates_token_and_shows_value_once(client, anna):
 
 
 def test_web_page_user_cannot_pick_another_owner(client, anna, ben):
+    """Verifies REQ-FUNC-012, REQ-FUNC-020."""
     client.force_login(anna)
 
     response = client.post(reverse("api_tokens"), {"name": "sneaky", "owner": ben.pk})
@@ -383,6 +409,7 @@ def test_web_page_user_cannot_pick_another_owner(client, anna, ben):
 
 
 def test_web_page_org_admin_creates_token_with_expiry_for_member(client, admin, anna):
+    """Verifies REQ-FUNC-020."""
     client.force_login(admin)
     day = timezone.localdate() + timedelta(days=7)
 
@@ -394,6 +421,7 @@ def test_web_page_org_admin_creates_token_with_expiry_for_member(client, admin, 
 
 
 def test_web_page_rejects_past_expiry(client, anna):
+    """Verifies REQ-FUNC-020."""
     client.force_login(anna)
     yesterday = timezone.localdate() - timedelta(days=1)
 
@@ -404,6 +432,7 @@ def test_web_page_rejects_past_expiry(client, anna):
 
 
 def test_web_page_lists_tokens_and_revokes(client, admin, anna):
+    """Verifies REQ-FUNC-023."""
     token, value = ApiToken.issue(anna, "Anna ERP", created_by=anna)
     client.force_login(admin)
 
@@ -419,12 +448,14 @@ def test_web_page_lists_tokens_and_revokes(client, admin, anna):
 
 
 def test_web_page_requires_login(client):
+    """Verifies REQ-INT-011."""
     response = client.get(reverse("api_tokens"))
     assert response.status_code == 302
     assert reverse("oidc_authentication_init") in response["Location"]
 
 
 def test_latest_allowed_expiry_is_accepted(client, anna):
+    """Verifies REQ-FUNC-020."""
     client = api_client(client, anna)
 
     response = post(client, {"name": "long", "expiresAt": "2100-12-31"})
@@ -433,6 +464,7 @@ def test_latest_allowed_expiry_is_accepted(client, anna):
 
 
 def test_web_page_rejects_expiry_after_2100_without_500(client, anna):
+    """Verifies REQ-FUNC-020."""
     client.force_login(anna)
 
     response = client.post(reverse("api_tokens"), {"name": "x", "owner": anna.pk, "expires_on": "9999-12-31"})

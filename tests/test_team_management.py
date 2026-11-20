@@ -41,6 +41,7 @@ def request_user(organization):
 
 @pytest.mark.django_db
 def test_org_admin_can_view_team_members(client, org_admin, request_user):
+    """Verifies REQ-FUNC-010."""
     client.force_login(org_admin)
 
     response = client.get(reverse("team_members"))
@@ -52,6 +53,7 @@ def test_org_admin_can_view_team_members(client, org_admin, request_user):
 
 @pytest.mark.django_db
 def test_request_user_cannot_view_team_members(client, request_user):
+    """Verifies REQ-FUNC-012."""
     client.force_login(request_user)
 
     response = client.get(reverse("team_members"))
@@ -61,6 +63,7 @@ def test_request_user_cannot_view_team_members(client, request_user):
 
 @pytest.mark.django_db
 def test_org_admin_can_edit_team_member(client, org_admin, request_user):
+    """Verifies REQ-FUNC-010."""
     client.force_login(org_admin)
 
     response = client.post(
@@ -87,6 +90,7 @@ def test_org_admin_can_edit_team_member(client, org_admin, request_user):
 
 @pytest.mark.django_db
 def test_org_admin_can_deactivate_member(client, org_admin, request_user):
+    """Verifies REQ-FUNC-010."""
     client.force_login(org_admin)
 
     response = client.post(reverse("deactivate_member", args=[request_user.id]))
@@ -99,6 +103,7 @@ def test_org_admin_can_deactivate_member(client, org_admin, request_user):
 
 @pytest.mark.django_db
 def test_org_admin_can_reactivate_member(client, org_admin, request_user):
+    """Verifies REQ-FUNC-010."""
     request_user.is_active = False
     request_user.save(update_fields=["is_active"])
 
@@ -114,6 +119,7 @@ def test_org_admin_can_reactivate_member(client, org_admin, request_user):
 
 @pytest.mark.django_db
 def test_org_admin_can_delete_team_member(client, org_admin, request_user):
+    """Verifies REQ-FUNC-010."""
     client.force_login(org_admin)
 
     response = client.post(reverse("delete_member", args=[request_user.id]))
@@ -124,6 +130,7 @@ def test_org_admin_can_delete_team_member(client, org_admin, request_user):
 
 @pytest.mark.django_db
 def test_org_admin_cannot_access_other_organizations_members(client, org_admin):
+    """Verifies REQ-FUNC-013."""
     other_organization = Organization.objects.create(
         name="Other Company",
         address="Other Street 2",
@@ -158,6 +165,7 @@ def test_org_admin_cannot_access_other_organizations_members(client, org_admin):
 
 @pytest.mark.django_db
 def test_cannot_deactivate_or_delete_last_admin_and_reviewer(client, org_admin):
+    """Verifies REQ-FUNC-011."""
     client.force_login(org_admin)
 
     deactivate_response = client.post(
@@ -184,6 +192,7 @@ def test_cannot_deactivate_or_delete_last_admin_and_reviewer(client, org_admin):
 
 @pytest.mark.django_db
 def test_member_actions_require_post(client, org_admin):
+    """Verifies REQ-FUNC-010, REQ-SEC-006."""
     client.force_login(org_admin)
 
     urls = [

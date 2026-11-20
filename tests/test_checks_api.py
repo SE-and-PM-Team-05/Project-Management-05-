@@ -83,6 +83,7 @@ def checks_of(response):
 
 
 def test_req_int_010_route_is_versioned():
+    """Verifies REQ-INT-010."""
     assert reverse("api_create_check") == URL
 
 
@@ -90,6 +91,7 @@ def test_req_int_010_route_is_versioned():
 
 
 def test_req_func_045_response_has_appendix_b_shape(api, vies):
+    """Verifies REQ-FUNC-045."""
     response = post(api, {**VALID_INPUT, "companyRegisterNumber": "FN 123456a", "reference": "PO-4711"})
     assert response.status_code == 200
     body = response.json()
@@ -108,11 +110,13 @@ def test_req_func_045_response_has_appendix_b_shape(api, vies):
     assert [c["check"] for c in body["checks"]] == [
         "vatValid",
         "nameMatchesVat",
+        "listedAsFakeCompany",
         "onHfuList",
     ]
 
 
 def test_req_func_031_032_valid_vat_and_matching_name(api, vies):
+    """Verifies REQ-FUNC-031, REQ-FUNC-032."""
     checks = checks_of(post(api, VALID_INPUT))
     assert checks["vatValid"]["result"] == "TRUE"
     assert checks["vatValid"]["source"] == "VIES"
@@ -124,11 +128,13 @@ def test_req_func_031_032_valid_vat_and_matching_name(api, vies):
 
 
 def test_req_func_030_vat_number_is_normalized_before_vies(api, vies):
+    """Verifies REQ-FUNC-030."""
     post(api, VALID_INPUT)
     assert vies.call_args.kwargs["json"] == {"countryCode": "AT", "vatNumber": "U12345678", **REQUESTER}
 
 
 def test_req_func_031_invalid_vat_returns_false(api, vies):
+    """Verifies REQ-FUNC-031."""
     vies.return_value = vies_answer(valid=False, name="---")
     checks = checks_of(post(api, VALID_INPUT))
     assert checks["vatValid"]["result"] == "FALSE"
@@ -142,6 +148,7 @@ def test_req_func_031_invalid_vat_returns_false(api, vies):
 
 
 def test_req_func_032_other_company_returns_false(api, vies):
+    """Verifies REQ-FUNC-032."""
     vies.return_value = vies_answer(name="GANZ ANDERE GMBH")
     assert checks_of(post(api, VALID_INPUT))["nameMatchesVat"]["result"] == "FALSE"
 
@@ -150,6 +157,7 @@ def test_req_func_032_other_company_returns_false(api, vies):
 
 
 def test_req_int_012_vies_outage_still_returns_200_with_unknown(api, vies):
+    """Verifies REQ-INT-012."""
     vies.side_effect = requests.ConnectionError()
     response = post(api, VALID_INPUT)
     assert response.status_code == 200
@@ -182,6 +190,7 @@ def test_req_int_012_vies_outage_still_returns_200_with_unknown(api, vies):
     ],
 )
 def test_req_func_030_invalid_input_returns_400_without_calling_vies(api, vies, data, fields):
+    """Verifies REQ-FUNC-030."""
     response = post(api, data)
     assert response.status_code == 400
     error = response.json()["error"]
@@ -193,6 +202,7 @@ def test_req_func_030_invalid_input_returns_400_without_calling_vies(api, vies, 
 
 @pytest.mark.parametrize("body", ["not json", "[1, 2]", ""])
 def test_req_int_012_body_that_is_not_a_json_object_returns_400(api, vies, body):
+    """Verifies REQ-INT-012."""
     response = api.post(URL, body, content_type="application/json")
     assert response.status_code == 400
     assert response.json()["error"]["code"] in ("INVALID_JSON", "INVALID_INPUT")
@@ -200,6 +210,7 @@ def test_req_int_012_body_that_is_not_a_json_object_returns_400(api, vies, body)
 
 
 def test_req_func_031_other_eu_number_is_accepted(api, vies, hfu):
+    """Verifies REQ-FUNC-031."""
     response = post(api, {"vatNumber": "EL123456789", "companyName": "Ellas AE"})
     assert response.status_code == 200
     assert vies.call_args.kwargs["json"] == {"countryCode": "EL", "vatNumber": "123456789", **REQUESTER}
@@ -212,6 +223,7 @@ def test_req_func_031_other_eu_number_is_accepted(api, vies, hfu):
 
 
 def test_req_int_011_anonymous_call_returns_401(client, vies, db):
+    """Verifies REQ-INT-011."""
     response = post(client, VALID_INPUT)
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "NOT_AUTHENTICATED"
@@ -220,6 +232,7 @@ def test_req_int_011_anonymous_call_returns_401(client, vies, db):
 
 @pytest.mark.django_db
 def test_req_func_012_user_without_request_role_gets_403(client, vies):
+    """Verifies REQ-FUNC-012."""
     client.force_login(make_user(is_review_user=True, is_org_admin=True))
     response = post(client, VALID_INPUT)
     assert response.status_code == 403
@@ -229,12 +242,14 @@ def test_req_func_012_user_without_request_role_gets_403(client, vies):
 
 @pytest.mark.django_db
 def test_req_func_012_super_admin_cannot_start_a_check(client, vies):
+    """Verifies REQ-FUNC-012."""
     admin = User.objects.create_superuser("root@example.com", "x")
     client.force_login(admin)
     assert post(client, VALID_INPUT).status_code == 403
 
 
 def test_req_func_013_response_names_only_the_own_organization(client, vies, db):
+    """Verifies REQ-FUNC-013."""
     make_user(email="other@example.com", org_name="Fremd Bau GmbH", is_request_user=True)
     user_b = User.objects.get(email="other@example.com")
     client.force_login(user_b)
@@ -242,6 +257,7 @@ def test_req_func_013_response_names_only_the_own_organization(client, vies, db)
 
 
 def test_sec_session_post_without_csrf_token_is_rejected(request_user, vies):
+    """Verifies REQ-SEC-006."""
     from django.test import Client
 
     client = Client(enforce_csrf_checks=True)
@@ -253,6 +269,7 @@ def test_sec_session_post_without_csrf_token_is_rejected(request_user, vies):
 
 
 def test_req_int_012_get_returns_405_json(api):
+    """Verifies REQ-INT-012."""
     response = api.get(URL)
     assert response.status_code == 405
     assert response.json()["error"]["code"] == "METHOD_NOT_ALLOWED"
@@ -262,6 +279,7 @@ def test_req_int_012_get_returns_405_json(api):
 
 
 def test_req_rel_004_check_is_stored_with_all_results(api, vies, request_user):
+    """Verifies REQ-REL-004."""
     body = post(api, {**VALID_INPUT, "companyRegisterNumber": "123456a", "reference": "PO-4711"}).json()
 
     stored = CheckRequest.objects.get()
@@ -278,6 +296,7 @@ def test_req_rel_004_check_is_stored_with_all_results(api, vies, request_user):
     assert [(r.check_name, r.result) for r in stored.results.all()] == [
         ("vatValid", "TRUE"),
         ("nameMatchesVat", "TRUE"),
+        ("listedAsFakeCompany", "UNKNOWN"),  # no list sync in this test
         ("onHfuList", "FALSE"),
     ]
     # The response is exactly what was stored.
@@ -285,6 +304,7 @@ def test_req_rel_004_check_is_stored_with_all_results(api, vies, request_user):
 
 
 def test_req_func_050_request_with_unknown_results_is_stored_too(api, vies):
+    """Verifies REQ-FUNC-050."""
     vies.side_effect = requests.ConnectionError()
     body = post(api, VALID_INPUT).json()
     result = CheckRequestResult.objects.get(request_id=body["requestId"], check_name="vatValid")
@@ -304,7 +324,9 @@ class FailingSource(SourceAdapter):
 
 
 def test_scrum_60_failing_source_still_returns_200_and_the_request_is_stored(api, vies):
-    """One source stubbed to fail: the others answer, the response is 200 and everything is stored
+    """REQ-FUNC-039, REQ-REL-001.
+
+    One source stubbed to fail: the others answer, the response is 200 and everything is stored
     (REQ-FUNC-039, REQ-REL-001, REQ-INT-012)."""
     with mock.patch("checks.runner.ADAPTERS", [ViesAdapter(), FailingSource()]):
         response = post(api, VALID_INPUT)
@@ -325,7 +347,10 @@ def test_scrum_60_failing_source_still_returns_200_and_the_request_is_stored(api
 
 
 def test_req_func_050_all_evidence_fields_are_stored_for_an_unknown_request(api, vies, request_user):
-    """The acceptance test of REQ-FUNC-050: every field is in the database, also when results are UNKNOWN."""
+    """REQ-FUNC-050.
+
+    The acceptance test of REQ-FUNC-050: every field is in the database, also when results are UNKNOWN.
+    """
     vies.side_effect = requests.ConnectionError()
     data = {
         **VALID_INPUT,
@@ -353,6 +378,7 @@ def test_req_func_050_all_evidence_fields_are_stored_for_an_unknown_request(api,
     assert [(r.check_name, r.result, r.reason, r.source) for r in results] == [
         ("vatValid", "UNKNOWN", "SOURCE_UNAVAILABLE", "VIES"),
         ("nameMatchesVat", "UNKNOWN", "SOURCE_UNAVAILABLE", "VIES"),
+        ("listedAsFakeCompany", "UNKNOWN", "SOURCE_UNAVAILABLE", "BMF"),
         ("onHfuList", "FALSE", "", "OEGK"),
     ]
     assert all(r.data_timestamp for r in results)
@@ -360,6 +386,7 @@ def test_req_func_050_all_evidence_fields_are_stored_for_an_unknown_request(api,
 
 
 def test_req_func_050_vies_reference_number_is_stored(api, vies):
+    """Verifies REQ-FUNC-050."""
     answer = vies_answer()
     answer.json.return_value["requestIdentifier"] = "WAPIAAAAZ1b2c3d4"
     vies.return_value = answer
@@ -370,7 +397,7 @@ def test_req_func_050_vies_reference_number_is_stored(api, vies):
 
 
 def test_req_func_050_list_sync_time_is_stored_as_data_timestamp(api, vies):
-    """For a list source the result's dataTimestamp is the sync it is based on (SRS 3.2.4, Appendix B)."""
+    """REQ-FUNC-050: For a list source the result's dataTimestamp is the sync it is based on (SRS 3.2.4, Appendix B)."""
     synced_at = timezone.now() - timedelta(hours=6)
 
     class ListSource(SourceAdapter):
@@ -391,20 +418,23 @@ def checks_of_body(body):
 
 
 def test_req_func_041_each_check_creates_a_new_record(api, vies):
+    """Verifies REQ-FUNC-041."""
     first = post(api, VALID_INPUT).json()["requestId"]
     second = post(api, VALID_INPUT).json()["requestId"]
     assert first != second
     assert CheckRequest.objects.count() == 2
-    assert CheckRequestResult.objects.count() == 6
+    assert CheckRequestResult.objects.count() == 8  # 4 checks per request: VIES (2), BMF, HFU
 
 
 @pytest.mark.parametrize("data", [{}, {"vatNumber": "ATU1", "companyName": "X"}])
 def test_req_func_030_invalid_input_stores_nothing(api, vies, data):
+    """Verifies REQ-FUNC-030."""
     assert post(api, data).status_code == 400
     assert not CheckRequest.objects.exists()
 
 
 def test_req_int_011_rejected_calls_store_nothing(client, vies, db):
+    """Verifies REQ-INT-011."""
     assert post(client, VALID_INPUT).status_code == 401
     client.force_login(make_user(is_review_user=True))
     assert post(client, VALID_INPUT).status_code == 403
@@ -412,6 +442,7 @@ def test_req_int_011_rejected_calls_store_nothing(client, vies, db):
 
 
 def test_req_rel_004_database_failure_returns_500_and_leaves_no_partial_record(api, vies):
+    """Verifies REQ-REL-004."""
     with mock.patch.object(CheckRequestResult.objects, "bulk_create", side_effect=DatabaseError("disk full")):
         response = post(api, VALID_INPUT)
     assert response.status_code == 500
@@ -421,6 +452,7 @@ def test_req_rel_004_database_failure_returns_500_and_leaves_no_partial_record(a
 
 
 def test_req_func_051_stored_results_cannot_be_changed(api, vies):
+    """Verifies REQ-FUNC-051."""
     post(api, VALID_INPUT)
     stored = CheckRequest.objects.get()
     stored.company_name = "Changed"
@@ -436,6 +468,7 @@ def test_req_func_051_stored_results_cannot_be_changed(api, vies):
 
 
 def test_req_func_051_request_can_be_deleted_as_a_whole(api, vies):
+    """Verifies REQ-FUNC-051."""
     post(api, VALID_INPUT)
     CheckRequest.objects.get().delete()
     assert not CheckRequestResult.objects.exists()
@@ -447,7 +480,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 
 def test_req_func_051_queryset_update_and_bulk_update_are_blocked(api, vies):
-    """update() and bulk_update() skip save(), so the QuerySet blocks them as well."""
+    """REQ-FUNC-051: update() and bulk_update() skip save(), so the QuerySet blocks them as well."""
     post(api, VALID_INPUT)
     stored = CheckRequest.objects.get()
     with pytest.raises(ValueError):
@@ -463,17 +496,23 @@ def test_req_func_051_queryset_update_and_bulk_update_are_blocked(api, vies):
         CheckRequestResult.objects.bulk_update(results, ["result"])
     stored.refresh_from_db()
     assert stored.company_name == "Muster Bau GmbH"
-    assert [r.result for r in stored.results.all()] == ["TRUE", "TRUE", "FALSE"]  # vatValid, nameMatchesVat, onHfuList
+    assert [r.result for r in stored.results.all()] == [
+        "TRUE",
+        "TRUE",
+        "UNKNOWN",
+        "FALSE",
+    ]  # vatValid, nameMatchesVat, listedAsFakeCompany (no sync), onHfuList
 
 
 @pytest.mark.parametrize("model", [CheckRequest, CheckRequestResult])
 def test_req_func_051_stored_results_are_not_editable_in_the_admin(model):
-    """Not even a super admin can edit evidence; a read-only admin would need its own review."""
+    """REQ-FUNC-051: Not even a super admin can edit evidence; a read-only admin would need its own review."""
     assert not admin.site.is_registered(model)
 
 
 @pytest.mark.parametrize("method", ["put", "patch", "delete"])
 def test_req_func_051_api_has_no_update_path(api, vies, method):
+    """Verifies REQ-FUNC-051."""
     request_id = post(api, VALID_INPUT).json()["requestId"]
     response = getattr(api, method)(URL, {"companyName": "Changed"}, content_type="application/json")
     assert response.status_code == 405
@@ -485,7 +524,7 @@ def test_req_func_051_api_has_no_update_path(api, vies, method):
 
 
 def test_req_func_041_two_checks_of_the_same_partner_give_two_records_with_different_timestamps(api, vies):
-    """The acceptance test of REQ-FUNC-041: the second check does not overwrite the first."""
+    """REQ-FUNC-041: The acceptance test of REQ-FUNC-041: the second check does not overwrite the first."""
     start = timezone.now()
     times = iter([start, start + timedelta(seconds=1), start + timedelta(days=1), start + timedelta(days=1, seconds=1)])
     with mock.patch("checks.views.utc_now", side_effect=lambda: next(times)):
@@ -504,7 +543,7 @@ def test_req_func_041_two_checks_of_the_same_partner_give_two_records_with_diffe
 
 
 def test_req_func_040_advancing_time_creates_no_new_result(api, vies):
-    """Results are not recomputed or re-checked when they are read later, not even a year later."""
+    """REQ-FUNC-040: Results are not recomputed or re-checked when they are read later, not even a year later."""
     request_id = post(api, VALID_INPUT).json()["requestId"]
     before = CheckRequest.objects.get().to_json()
 
@@ -517,7 +556,7 @@ def test_req_func_040_advancing_time_creates_no_new_result(api, vies):
 
     assert after == before
     assert CheckRequest.objects.count() == 1
-    assert CheckRequestResult.objects.count() == 3  # VIES (2) + HFU
+    assert CheckRequestResult.objects.count() == 4  # VIES (2), BMF, HFU
     assert vies.call_count == 1
 
 
@@ -532,7 +571,7 @@ def python_files_outside_tests():
 
 
 def test_req_func_040_only_a_user_or_client_request_runs_and_stores_checks():
-    """Code inspection as a test: a sync job, management command or signal must not re-check partners.
+    """REQ-FUNC-040: Code inspection as a test: a sync job, management command or signal must not re-check partners.
 
     Checks are run and stored only in the view that handles a user's or client system's request. A new caller
     (e.g. the web form, REQ-FUNC-042) must also be started by a user and is added here on purpose.
@@ -550,6 +589,7 @@ def test_req_func_040_only_a_user_or_client_request_runs_and_stores_checks():
 
 
 def test_req_comp_002_deleting_the_user_keeps_the_request_and_the_name(api, vies, request_user):
+    """Verifies REQ-COMP-002."""
     post(api, VALID_INPUT)
     request_user.delete()
     stored = CheckRequest.objects.get()
@@ -558,6 +598,7 @@ def test_req_comp_002_deleting_the_user_keeps_the_request_and_the_name(api, vies
 
 
 def test_req_func_013_request_is_stored_under_the_own_organization_only(client, vies, db):
+    """Verifies REQ-FUNC-013."""
     user_a = make_user(email="a@example.com", org_name="A Bau GmbH", is_request_user=True)
     user_b = make_user(email="b@example.com", org_name="B Bau GmbH", is_request_user=True)
     client.force_login(user_b)
@@ -570,6 +611,7 @@ def test_req_func_013_request_is_stored_under_the_own_organization_only(client, 
 
 
 def test_sec_session_post_with_csrf_token_is_accepted(request_user, vies):
+    """Verifies REQ-SEC-006."""
     from django.test import Client
 
     client = Client(enforce_csrf_checks=True)
@@ -581,6 +623,7 @@ def test_sec_session_post_with_csrf_token_is_accepted(request_user, vies):
 
 
 def test_req_int_012_unexpected_error_returns_500_json(api, vies):
+    """Verifies REQ-INT-012."""
     with mock.patch("checks.views.run_checks", side_effect=RuntimeError("bug")):
         response = post(api, VALID_INPUT)
     assert response.status_code == 500
@@ -588,6 +631,7 @@ def test_req_int_012_unexpected_error_returns_500_json(api, vies):
 
 
 def test_req_func_034_hfu_query_uses_requesting_organization_vat(api, hfu):
+    """Verifies REQ-FUNC-034."""
     post(api, VALID_INPUT)
 
     assert hfu.call_args.kwargs["organization_uid"] == "ATU99999999"

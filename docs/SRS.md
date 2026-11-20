@@ -1,7 +1,7 @@
 # Software Requirements Specification
 ## For BizPartnerCheck
 
-Version 2.6 (combined team version)  
+Version 2.9 (combined team version)  
 Prepared by Luka Herceg, Elias Hoffstadt, WŚ and Tony  
 Practical Projects 2026/27  
 2026-10-22
@@ -26,6 +26,9 @@ Practical Projects 2026/27
 | Luka Herceg | 2026-11-04 | SRS added to the code repository as `docs/SRS.md`, which is now the master copy for the team and coding agents (review of PR #9) | 2.4 |
 | Team | 2026-11-16 | Third-party login decided: users log in through a self-hosted Keycloak (OpenID Connect), which owns passwords, password reset, email verification and login lockout; Django's password login remains only for the Super Admin on the admin site. Impact: registration and invitation acceptance no longer ask for a password; the Keycloak production host is open (C3, C10, FUNC-001, FUNC-002, FUNC-003, SEC-002, SEC-004, 3.5, OD-10) | 2.5 |
 | Antonia Cheriambanattu | 2026-11-18 | HFU check only for Austrian VAT numbers (team decision in the review of PR #14, SCRUM-50): the HFU service is queried by VAT number only, so other partners get NOT_APPLICABLE, also when an FN is given (FUNC-038) | 2.6 |
+| Luka Herceg | 2026-11-18 | FUNC-072: the sync log is visible to the operator only, not to organizations, who see data freshness through `dataTimestamp` and `stale` on each result (review of PR #18, SCRUM-63) | 2.7 |
+| Team | 2026-11-19 | Customer feedback from the Sprint 2 review: a check needs only the VAT number, because typing the company name causes mismatches from spelling, capital letters and umlauts. companyName becomes optional; without it `nameMatchesVat` is NOT_APPLICABLE, the BMF check skips the name step and the Firmenbuch is searched by VAT number (1.2, UC-04, Firmenbuch row in 3.1, check table in 3.2, FUNC-030, FUNC-032, FUNC-033, FUNC-035, Appendix C C-03; SCRUM-93). The organization's own VAT number given at registration is now verified as a Must, because it is sent to VIES as the requester on every check (FUNC-004 S → M, moved from Sprint 4 to Sprint 3 in 2.8; SCRUM-52) | 2.8 |
+| Team | 2026-11-19 | GISA and Firmenbuch access granted; the Firmenbuch can be searched by VAT number. A1 confirmed and OD-06 closed; the live lookups are still to be demonstrated (POC-003; SCRUM-80, SCRUM-84) (SCRUM-20) | 2.9 |
 
 ## 1. Introduction
 BizPartnerCheck is a multi-tenant web service that runs the due-diligence checks a construction company must perform on a prospective business partner in one request, and stores the result as evidence. Section 1 states purpose, scope and process; Section 2 describes the business case, stakeholders, use cases and constraints; Section 3 lists the verifiable requirements; Section 4 explains how they are verified; Section 5 holds supporting material.
@@ -41,11 +44,11 @@ This SRS defines **what** BizPartnerCheck shall do, not how it is built. Once ac
 | Operator (Super Admin) | Understands operating, security and compliance obligations |
 
 ### 1.2 Product Scope
-**BizPartnerCheck, release 1.0.** A user, or the customer's own software through the API, enters a partner's VAT number and name; BizPartnerCheck runs all checks against the official sources within seconds, returns a detailed result per check, and stores a timestamped record proving the check was done.
+**BizPartnerCheck, release 1.0.** A user, or the customer's own software through the API, enters a partner's VAT number (the company name is optional); BizPartnerCheck runs all checks against the official sources within seconds, returns a detailed result per check, and stores a timestamped record proving the check was done.
 
 | In scope (release 1.0) | Out of scope |
 |---|---|
-| VAT check for all EU VAT numbers; fake-company, HFU, company-register, business-license and required-license checks for Austrian partners; company-name check | Legal advice or a binding "contract / don't contract" decision |
+| VAT check for all EU VAT numbers; fake-company, HFU, company-register, business-license and required-license checks for Austrian partners; company-name check when a name is given | Legal advice or a binding "contract / don't contract" decision |
 | REST API with revocable tokens; JSON and HTML responses | Storing documents (certificates, register extracts, PDFs) |
 | Organization self-registration, four roles, multi-tenancy | Automatic or scheduled re-checks of partners |
 | Request log, review web app, housekeeping, audit log | PDF export (a browser print of the HTML page is possible) |
@@ -214,7 +217,7 @@ Roles are additive: one user may hold several roles, and the first user of a new
 |---|---|
 | Precondition | Organization is active; the caller holds a valid, non-revoked token of a user with the Request User role. |
 | Trigger | Client system needs to contract or re-check a partner. |
-| Main flow | 1. Client sends `POST /api/v1/checks` with vatNumber, companyName and optional FN, address, required license codes and reference. 2. System authenticates the token and checks the rate limit. 3. System validates and normalizes the input. 4. System runs all applicable checks in parallel, each with a time budget. 5. System stores the complete request atomically. 6. System returns one result per check as JSON or HTML. |
+| Main flow | 1. Client sends `POST /api/v1/checks` with vatNumber and optional companyName, FN, address, required license codes and reference. 2. System authenticates the token and checks the rate limit. 3. System validates and normalizes the input. 4. System runs all applicable checks in parallel, each with a time budget. 5. System stores the complete request atomically. 6. System returns one result per check as JSON or HTML. |
 | Alternative flows | 2a. Token missing, invalid or revoked → 401. 2b. Rate limit exceeded → 429, nothing stored. 3a. Input invalid → 400 with field errors, nothing stored. 4a. A source fails or times out → that check is UNKNOWN / SOURCE_UNAVAILABLE, the others continue. 4b. Partner not Austrian → Austria-only checks are NOT_APPLICABLE. 4c. Several or name-only matches → UNKNOWN / AMBIGUOUS_MATCH. |
 | Postcondition | The request is stored immutably and visible to the organization's Review Users; an audit entry exists. |
 | Requirements | REQ-FUNC-030…049, REQ-SEC-003 |
@@ -223,7 +226,7 @@ Roles are additive: one user may hold several roles, and the first user of a new
 
 | ID | Assumption / dependency | Impact if false |
 |---|---|---|
-| A1 | The team obtains access to GISA and Firmenbuch (account, ID Austria, keys) by Sprint 3 (REQ-POC-003). | Those checks return UNKNOWN / SOURCE_UNAVAILABLE and are demonstrated against test doubles. |
+| A1 | **Confirmed 2026-11-19:** the team has access to GISA and the Firmenbuch (ID Austria login held by Maryam Salem), and the Firmenbuch can be searched by VAT number (REQ-POC-003, FUNC-035). | If access is withdrawn, those checks return UNKNOWN / SOURCE_UNAVAILABLE and are demonstrated against test doubles. |
 | A2 | VIES, the BMF RSS feed and the ÖGK HFU service stay free and reachable. | The affected check is degraded; the last synced copy is used where possible. |
 | A3 | About 80 % of checked partners are Austrian (R2). | More NOT_APPLICABLE results; value per check drops. |
 | A4 | Fake-company entries contain VAT number or FN, so matching need not rely on names (the HFU service is queried by VAT number only, see FUNC-034). | Name-only matching gives false hits; more AMBIGUOUS_MATCH results. |
@@ -238,8 +241,8 @@ Release R1 is the minimum end-to-end workflow; R2 completes the product; R3 hold
 | Spec phase | 08.10.–22.10. | – | This SRS; POCs REQ-POC-001…003 started |
 | Sprint 1 | 22.10.–05.11. | R1 | Platform and CI, registration, login, roles, tenant isolation, VAT and name check end-to-end (FUNC-001…003, 010…013, 030…032, 045; BUILD-*, INST-*) |
 | Sprint 2 | 05.11.–19.11. | R1 | Tokens, rate limit, list syncs, fake-company and HFU checks, evidence log (FUNC-020…023, 033, 034, 039…041, 050, 051, 070…073; SEC-001…005) |
-| Sprint 3 | 19.11.–03.12. | R1 | Firmenbuch and GISA checks, review web app, HTML response, web form (FUNC-035…038, 042, 046…048, 052…055; INT-010…016) |
-| Sprint 4 | 03.12.–17.12. | R2 | Housekeeping, audit log, Super Admin console, German UI, hardening, QoS tests – **MVP demo** (FUNC-004, 005, 014, 024, 060…063, 074; INT-001…005; remaining QoS) |
+| Sprint 3 | 19.11.–03.12. | R1 | Firmenbuch and GISA checks, review web app, HTML response, web form, verified VAT number at registration (FUNC-004, 035…038, 042, 046…048, 052…055; INT-010…016) |
+| Sprint 4 | 03.12.–17.12. | R2 | Housekeeping, audit log, Super Admin console, German UI, hardening, QoS tests – **MVP demo** (FUNC-005, 014, 024, 060…063, 074; INT-001…005; remaining QoS) |
 | Sprint 5* | 17.12.–14.01. | R3 | Risk checks if capacity allows (FUNC-080…082); polish, documentation, final presentation |
 
 ## 3. Requirements
@@ -280,7 +283,7 @@ None. Users need only a device with a current browser; no customer hardware or l
 | VIES (R5) | VAT validity, registered name and address | Live call; free | VAT number | Live |
 | BMF fake-company list (R6) | Name, FN, VAT number, address, date listed | RSS feed imported into own DB; free | VAT, then FN, then normalized name | Daily sync |
 | ÖGK HFU list (R7) | Companies on the HFU list | SOAP web service (v3.0), live query per check; each query carries the requesting organization's UID; a daily import only if a full-list export is confirmed (SCRUM-19); free | VAT number (UID) only; no lookup by name or FN | Live |
-| Firmenbuch (R8) | Registration status, FN, legal form, managers; latest financial statement (R3) | Live call; operator credential (ID Austria) | FN, else name and VAT | Live |
+| Firmenbuch (R8) | Registration status, FN, legal form, managers; latest financial statement (R3) | Live call; operator credential (ID Austria) | FN, else VAT number | Live |
 | GISA (R9) | Business licenses and responsible persons | Live call; operator credential (ID Austria) | VAT or FN, else name | Live |
 | Brevo (SMTP) | Verification, invitation and password-reset emails | SMTP with TLS; sender address on a verified domain for reliable delivery | – | – |
 
@@ -304,7 +307,7 @@ None. Users need only a device with a current browser; no customer hardware or l
 | REQ-FUNC-001 | The landing page shall offer Register and Login; a visitor shall be able to create a login in Keycloak (first name, last name, email, password) and then register an organization for free with organization name, address and VAT number, accepting the terms of use. | Missing fields and malformed VAT numbers rejected; on success the organization exists and the logged-in user is its first user with all three org roles. | M | T | UC-01, UN-11 |
 | REQ-FUNC-002 | Only users whose email address Keycloak has verified (verification link sent by Keycloak) shall be able to log in, register an organization or accept an invitation. | Login with an unverified email is refused; verified succeeds. | M | T | UC-01 |
 | REQ-FUNC-003 | Users shall log in through Keycloak (OpenID Connect authorization code flow) and be matched to their account by email address; logout shall also end the Keycloak session; password reset by email is offered by Keycloak. | Login and logout through Keycloak; deactivated users and the Super Admin are refused; reset flow in Keycloak. | M | T | C10, UC-01 |
-| REQ-FUNC-004 | The system should check the registering organization's own VAT number via VIES. | Invalid → registration rejected; VIES unavailable → accepted and marked "VAT unverified". | S | T | UC-01 |
+| REQ-FUNC-004 | The system shall check the registering organization's own VAT number via VIES. | Invalid → registration rejected; VIES unavailable → accepted and marked "VAT unverified". | M | T | UC-01 |
 | REQ-FUNC-005 | A setup script shall create exactly one initial Super Admin with a one-time password that must be changed at first login. Self-registration of individual users without an Org Admin is not part of release 1.0 (W). | Script run on an empty system; forced password change observed. | M | T | UC-10 |
 
 #### 3.2.2 Users, Roles and Tenants
@@ -345,7 +348,7 @@ Because TRUE is not always the good outcome, each check states its **expected va
 | Check (question) | Source | Expected value |
 |---|---|---|
 | `vatValid` – Is the VAT number valid? | VIES | TRUE |
-| `nameMatchesVat` – Does the given name match the VAT registration? | VIES | TRUE |
+| `nameMatchesVat` – Does the given name match the VAT registration? | VIES | TRUE (NOT_APPLICABLE if no name given) |
 | `listedAsFakeCompany` – Is the partner on the fake-company list? | BMF | FALSE |
 | `onHfuList` – Is the partner on the HFU list? | ÖGK | informational: FALSE is normal and means part of the payment must be withheld |
 | `inCompanyRegister` – Is the partner actively registered? | Firmenbuch | TRUE |
@@ -354,12 +357,12 @@ Because TRUE is not always the good outcome, each check states its **expected va
 
 | ID | Requirement | Acceptance criteria | P | V | Trace |
 |---|---|---|---|---|---|
-| REQ-FUNC-030 | The system shall accept a check with vatNumber and companyName (required), FN, address, required license codes and an internal reference (optional); input is normalized (country prefix, spaces, case) and invalid input rejected with field errors before any source is called. | Missing VAT or name returns 400; nothing stored. | M | T | UC-04, UC-05 |
+| REQ-FUNC-030 | The system shall accept a check with vatNumber (required), companyName, FN, address, required license codes and an internal reference (optional); input is normalized (country prefix, spaces, case) and invalid input rejected with field errors before any source is called. | A check with only a VAT number is accepted; missing VAT returns 400; nothing stored. | M | T | UC-04, UC-05 |
 | REQ-FUNC-031 | **vatValid:** the system shall check the format and query VIES for any EU member state. | Valid AT and DE numbers → TRUE; invalid → FALSE; VIES down → UNKNOWN. | M | T | UN-06 |
-| REQ-FUNC-032 | **nameMatchesVat:** the system shall compare the given name with the VIES-registered name, ignoring case, punctuation and legal-form suffixes, and report the registered name. | "Muster Bau GmbH" vs "MUSTER BAU GMBH" → TRUE; other company → FALSE. | M | T | R2, UN-05 |
-| REQ-FUNC-033 | **listedAsFakeCompany:** the system shall match against the synced BMF list by VAT number, then FN, then normalized name; a name-only hit is never a definite match. | Listed company → TRUE with entry details; unlisted → FALSE; name-only hit → UNKNOWN / AMBIGUOUS_MATCH with the candidate entry. | M | T | UN-02, A4 |
+| REQ-FUNC-032 | **nameMatchesVat:** if a company name is given, the system shall compare it with the VIES-registered name, ignoring case, punctuation and legal-form suffixes; without a name the result is NOT_APPLICABLE. In both cases the registered name is reported. | "Muster Bau GmbH" vs "MUSTER BAU GMBH" → TRUE; other company → FALSE; no name given → NOT_APPLICABLE with the registered name. | M | T | R2, UN-05 |
+| REQ-FUNC-033 | **listedAsFakeCompany:** the system shall match against the synced BMF list by VAT number, then FN, then normalized name if a name is given; a name-only hit is never a definite match. | Listed company → TRUE with entry details; unlisted → FALSE; name-only hit → UNKNOWN / AMBIGUOUS_MATCH with the candidate entry. | M | T | UN-02, A4 |
 | REQ-FUNC-034 | **onHfuList:** the system shall query the HFU web service with the partner's VAT number (`uidAuftragnehmer`) and the requesting organization's VAT number (`uidAuftraggeber`) and report the query date; the service has no lookup by name or FN, so there is no name fallback; the result is informational and FALSE is never presented as a failure. | Listed → TRUE; unlisted → FALSE with note "withholding applies"; service unavailable → UNKNOWN / SOURCE_UNAVAILABLE. | M | T | UN-02, BO-5 |
-| REQ-FUNC-035 | **inCompanyRegister:** for Austrian partners the system shall look up the Firmenbuch by FN, or by name and VAT, and report FN, registered name and legal form. | Active → TRUE; deleted or not found → FALSE; several matches → UNKNOWN / AMBIGUOUS_MATCH. | M | T | UN-02 |
+| REQ-FUNC-035 | **inCompanyRegister:** for Austrian partners the system shall look up the Firmenbuch by FN if one is given, otherwise by VAT number, and report FN, registered name and legal form. | Active → TRUE; deleted or not found → FALSE; several matches → UNKNOWN / AMBIGUOUS_MATCH; an active Austrian company checked with only its VAT number → TRUE with its FN. | M | T | UN-02 |
 | REQ-FUNC-036 | **inBusinessLicenseRegister:** for Austrian partners the system shall look up GISA and list all active licenses with the responsible person. | Company with licenses → TRUE plus list; none → FALSE. | M | T | UN-02 |
 | REQ-FUNC-037 | **hasRequiredLicenses:** if license codes are given, the result is TRUE only if each is active in GISA, otherwise FALSE naming the missing ones; without codes NOT_APPLICABLE. Which licenses are "necessary" is decided by the requester. | One missing license → FALSE naming it. | M | T | UC-04 |
 | REQ-FUNC-038 | A partner counts as Austrian if its VAT number starts with "ATU" or an FN is given; for others, checks 033 and 035…037 return NOT_APPLICABLE. Check 034 runs only if the VAT number starts with "ATU", because the HFU service is queried by VAT number only (FUNC-034); otherwise it returns NOT_APPLICABLE. | German VAT without FN → 031, 032 run; others NOT_APPLICABLE. Non-Austrian VAT with an FN → 034 NOT_APPLICABLE. | M | T | UN-06, A3 |
@@ -406,7 +409,7 @@ Because TRUE is not always the good outcome, each check states its **expected va
 |---|---|---|---|---|---|
 | REQ-FUNC-070 | The system shall import the BMF fake-company RSS feed at least once per day. | Sync log shows one successful run per day. | M | D | UC-09 |
 | REQ-FUNC-071 | The system shall query the HFU web service live per check; it shall import the list daily instead only if DLZ-AGH confirms a full-list export (REQ-POC-002, spike SCRUM-19: no export documented). | Decision documented; behaviour matches. | M | I | UC-09 |
-| REQ-FUNC-072 | Every sync run shall be logged with source, start and end time, outcome, number of entries, and the feed's own publication or last-modified timestamp; the log is read-only for organizations. | One log row per run with all fields. | M | T | UN-10 |
+| REQ-FUNC-072 | Every sync run shall be logged with source, start and end time, outcome, number of entries, and the feed's own publication or last-modified timestamp; only the operator can view the log and nobody can change it (organizations see how current a result is through `dataTimestamp` and `stale`). | One log row per run with all fields. | M | T | UN-10 |
 | REQ-FUNC-073 | A failed sync shall keep the last good copy; if the last success is older than 48 h, list-based checks add `stale: true`. | Simulated failure keeps data; flag appears after 48 h. | M | T | UN-10 |
 | REQ-FUNC-074 | The Super Admin should be able to view the sync log and start a sync manually. | Manual start creates a log row. | S | D | UC-10 |
 
@@ -575,7 +578,7 @@ The customer notes and the four individual drafts contained overlapping or contr
 |---|---|---|
 | C-01 | "Two types of users" vs. "four user types" | Four roles: Super Admin, Org Admin, Request User, Review User; roles are additive (2.5) |
 | C-02 | "Admin creates request user and a token for the user" vs. tokens "up to the user" | Org Admin creates tokens for any user; users may create their own; tokens carry the owner's rights (FUNC-020/021) |
-| C-03 | Customer listed address, first/last name, organization name and VAT number as data "the company should provide" | This is the registering organization's data (FUNC-001); a partner check needs VAT number and name, the rest is optional (FUNC-030) |
+| C-03 | Customer listed address, first/last name, organization name and VAT number as data "the company should provide" | This is the registering organization's data (FUNC-001); a partner check needs only the VAT number, the rest is optional (FUNC-030; changed after the Sprint 2 review, v2.8) |
 | C-04 | "A field for each check which is a boolean" vs. "TRUE, FALSE, perhaps INVALID / NO DETAILS FOUND" | Each check is a yes/no question with TRUE/FALSE, plus UNKNOWN with reason and NOT_APPLICABLE, and a stated expected value (3.2.4) |
 | C-05 | Drafts treated HFU "not listed" as a failure | Customer feedback: not being listed is normal and means withholding; HFU is informational and excluded from `allChecksPassed` (FUNC-034, 047) |
 | C-06 | "Registration not immediate priority" vs. "register button, free sign-up with email verification" | Organization self-registration is Must; individual user self-registration is Won't (FUNC-001, 005) |
@@ -635,7 +638,7 @@ BO-6 (workflow on time) is covered by REQ-DEAD-001, REQ-POC-001…003 and the ap
 | OD-03 | Which GISA trade codes count as "necessary licenses", or does the caller always supply them? | FUNC-037 | Customer |
 | OD-04 | Meeting rhythm (proposed: end of every sprint) and final acceptance date. | A6, DEAD-001 | Customer and team |
 | OD-05 | HFU: the web service documentation shows no full-list export; DLZ-AGH was asked on 04.11.2026 and the reply is pending. BMF feed: exact fields (VAT present?) still to confirm. | FUNC-071, A4 | Team (POC-001/002, SCRUM-19) |
-| OD-06 | Access via ID Austria (risk to R1): Maryam Salem holds the ID Austria login; the GISA application was submitted on 04.11.2026; the Firmenbuch request and the approval times are still open (SCRUM-20). | A1, POC-003 | Team |
+| OD-06 | **Closed 2026-11-19:** access to GISA and the Firmenbuch is granted; Maryam Salem holds the ID Austria login; the Firmenbuch can be searched by VAT number, which FUNC-035 relies on (SCRUM-20). | A1, POC-003 | Team |
 | OD-07 | Proposed QoS targets (availability, response times) and capacity figures to be confirmed. | 3.3 | Customer |
 | OD-08 | **Closed 2026-11-04:** app on Render, database on Neon, email via Brevo (SCRUM-42). Remaining: the Brevo sender is temporarily Luka Herceg's private email address and must be changed to a team email address, later one on the team's own domain. | C3, A5, COST-001 | Team |
 | OD-09 | Final wording of the no-liability terms and legal basis for processing register person data (GDPR). | COMP-001, 003 | Customer, legal advice |

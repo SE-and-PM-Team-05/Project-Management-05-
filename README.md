@@ -4,7 +4,7 @@ Team 05 · Software Engineering and Project Management · IMC Krems · Practical
 
 BizPartnerCheck is a multi-tenant web service that automates the due-diligence checks an Austrian construction company must run before contracting a business partner (VAT number, fake-company list, HFU list, company register, business licenses) and stores every check as evidence.
 
-- **Requirements:** [SRS v2.6](docs/SRS.md) (combined team version); changes follow REQ-CM-001 and are recorded in its Revision History
+- **Requirements:** [SRS v2.9](docs/SRS.md) (combined team version); changes follow REQ-CM-001 and are recorded in its Revision History
 - **Backlog:** Jira project [SCRUM](https://sepmimc.atlassian.net/jira/software/projects/SCRUM/boards/1)
 - **AI agent instructions:** [AGENTS.md](AGENTS.md)
 
@@ -12,7 +12,7 @@ BizPartnerCheck is a multi-tenant web service that automates the due-diligence c
 
 The Django skeleton and CI are in place (**SCRUM-17**). The app is deployed to **Render**, with the database on **Neon** and email through **Brevo** (decided in **SCRUM-42**); see [Deployment](#deployment) for the one-time setup.
 
-Organizations can register (**SCRUM-21**), and `POST /api/v1/checks` checks a VAT number and company name against VIES (**SCRUM-24**, see [API](#api)). Users create, list and revoke API tokens on the **API tokens** page (`/tokens/`) or through `/api/v1/tokens` (**SCRUM-72**), and every API call can authenticate with one as a Bearer token (**SCRUM-71**).
+Organizations can register (**SCRUM-21**), and `POST /api/v1/checks` checks a VAT number and company name against VIES (**SCRUM-24**, see [API](#api)). Users create, list and revoke API tokens on the **API tokens** page (`/tokens/`) or through `/api/v1/tokens` (**SCRUM-72**), and every API call can authenticate with one as a Bearer token (**SCRUM-71**), limited to 200 calls per minute per token (**SCRUM-73**).
 
 ## Run it locally
 
@@ -137,6 +137,34 @@ Then put `KEYCLOAK_CLIENT_SECRET=local-dev-secret` in your `.env`. Locally there
 | `KEYCLOAK_CLIENT_ID` | no | `bizpartnercheck` | Client ID of the app in that realm. |
 | `KEYCLOAK_CLIENT_SECRET` | when debug is off | – | Secret of the `bizpartnercheck` client; the same value Keycloak got as `KEYCLOAK_CLIENT_SECRET` when it imported the realm. |
 
+### Test names and SRS requirement IDs
+
+SRS Section 4 asks for one verification record per requirement. In this repository the tests are those records, so every test says which requirement it verifies (SCRUM-55):
+
+- Put the requirement ID(s), written exactly as in the SRS (`REQ-SEC-004`), at the start of the test's docstring. If one test verifies several requirements, list them all, separated by commas.
+- A test function whose name carries the ID (`test_req_func_031_...`) still needs the ID in its docstring, because a search for `REQ-FUNC-031` does not match the lower-case name.
+
+```python
+def test_lock_ends_after_15_minutes(client, admin, monkeypatch):
+    """REQ-SEC-004: a locked account can log in again after 15 minutes."""
+```
+
+To see which tests verify a requirement, search the tests for its ID. A search with no hit means no test verifies it yet:
+
+```bash
+grep -rn "REQ-SEC-004" tests/
+```
+
+In PowerShell: `Select-String -Path tests\*.py -Pattern "REQ-SEC-004"`.
+
+To list every requirement ID from the SRS that no test mentions (many are verified by inspection, demonstration or analysis, not by a test), in Ubuntu or Git Bash:
+
+```bash
+grep -o "REQ-[A-Z]*-[0-9]*" docs/SRS.md | sort -u | while read id; do grep -rqF "$id" tests/ || echo "$id"; done
+```
+
+`tests/test_traceability.py` runs in CI and fails if a test names no requirement ID or names one that does not exist in `docs/SRS.md`.
+
 ### Dependencies
 
 Direct dependencies are listed in `requirements.in` (app) and `requirements-dev.in` (tools); `requirements.txt` and `requirements-dev.txt` are the pinned lock files. To add or upgrade a library (agree on it in the team first):
@@ -224,6 +252,17 @@ A push to `main` deploys only after CI is green: the `deploy` job in `.github/wo
       **Instance type:** Keycloak is a Java server and needs more memory than the app. Render's free instance has 512 MB and sleeps when idle, which makes Keycloak slow to start or fail to start; if the free instance doesn't stay up, use a paid instance with more memory (team decision, SRS OD-10).
    4. **Deploy**, then open `https://<name>.onrender.com/admin/`, log in with the bootstrap admin and switch to the `bizpartnercheck` realm. Under **Realm settings → Email**, enter the Brevo SMTP settings from step 2 (host `smtp-relay.brevo.com`, port `2525`, StartTLS on, the SMTP login and key, and the verified sender as *From*), so Keycloak can send verification and password reset emails.
    5. **App:** in the app service from step 3, set `KEYCLOAK_REALM_URL` and `KEYCLOAK_CLIENT_SECRET` (table above) and deploy it. Test it: open the app, click Register, sign up, open the verification email, and register an organization.
+8. **Daily BMF sync** (SCRUM-64): in GitHub, add a repository secret named `DATABASE_URL` with the Neon connection string from step 1 (Settings → Secrets and variables → Actions). Deploy the app first (step 5), so its migrations, including `checks.0002` with the fake-company list and the sync log, are applied on Neon: without those tables the sync crashes before it can write a sync log row. Then start the first import by hand: Actions → **Daily BMF sync** → Run workflow, and check that the run is green and `/admin/` → Sync logs shows a `success` row. Until it has run once, the fake-company check answers `UNKNOWN`.
+
+### Daily BMF sync
+
+`.github/workflows/sync-bmf.yml` runs `python manage.py sync_bmf` every day at 03:17 UTC, straight against the Neon database (REQ-FUNC-070). The job downloads the BMF list of sham companies, replaces the stored list in one transaction and writes one row to the sync log, which the Super Admin sees under `/admin/` → Sync logs (REQ-FUNC-072).
+
+- **A failed run** (BMF unreachable, a changed page layout, a list less than half as long as the last one) changes nothing: checks keep using the last good copy, the sync log gets a `failed` row with the reason, and the run turns red in GitHub Actions. GitHub emails a failed scheduled run to whoever last changed the workflow's `cron` line. After 48 h without a successful run, fake-company results carry `stale: true` (REQ-FUNC-073).
+- **A much shorter list** is rejected on purpose, because it usually means a broken download. If BMF really did shorten the list, run `python manage.py sync_bmf --allow-shrink` once from your own machine against the Neon database, as in step 6.
+- **Settings:** the job sets placeholder values for `DJANGO_SECRET_KEY` and `KEYCLOAK_CLIENT_SECRET`, because `config/settings.py` refuses to load without them when debug is off; the import serves no web requests and logs nobody in. If a later change makes another setting required, add a placeholder to `sync-bmf.yml` too: `tests/test_sync_workflow.py` loads the settings with exactly the workflow's variables and fails otherwise.
+- **Locally**, `python manage.py sync_bmf` fills your own database with the real list.
+- GitHub only runs scheduled workflows from `main`, and it pauses them after 60 days without a commit in a public repository. Re-enable the workflow under Actions if that happens.
 
 ## API
 
@@ -243,6 +282,20 @@ curl -X POST https://<your-service>.onrender.com/api/v1/checks \
   -H "Authorization: Bearer $BPC_TOKEN" -H "Content-Type: application/json" \
   -d '{"vatNumber": "ATU12345678", "companyName": "Muster Bau GmbH"}'
 ```
+
+### Rate limit
+
+Each token may make **200 requests per minute** (REQ-SEC-003), counted over all endpoints. The minute starts with the first call after the previous minute ended. It is a fixed window, as the SRS describes it: a client can make 200 calls at the end of one window and 200 more right at the start of the next. Every answer to a token call carries the remaining quota:
+
+| Header | Meaning |
+|---|---|
+| `X-RateLimit-Limit` | `200` |
+| `X-RateLimit-Remaining` | Calls left in the current minute |
+| `X-RateLimit-Reset` | Seconds until the current minute ends |
+
+The 201st call within the minute gets **429 `RATE_LIMIT_EXCEEDED`** with `Retry-After` (seconds). It is rejected before anything else happens: no check runs and nothing is stored (UC-04, 2b). Rejected calls don't count, so waiting `Retry-After` seconds is always enough. The limit is per token, not per user: a second token has its own 200. Web-session calls have no per-token limit.
+
+The count is kept on the token's database row and changed under a row lock, so it is exact even when several app processes serve the same token.
 
 ### `POST /api/v1/checks` – check a business partner
 
@@ -293,6 +346,7 @@ Errors return `{"error": {"code": "…", "message": "…", "fields": {…}}}`:
 | 403 | `PERMISSION_DENIED` | User lacks the Request User role. |
 | 403 | `CSRF_FAILED` | Session call without `X-CSRFToken` header. |
 | 405 | `METHOD_NOT_ALLOWED` | Anything other than POST. |
+| 429 | `RATE_LIMIT_EXCEEDED` | More than 200 calls in a minute with this token; see [Rate limit](#rate-limit). Nothing is stored. |
 | 500 | `INTERNAL_ERROR` | Unexpected error on our side, e.g. the request could not be stored; nothing is stored then. Details only in the server log. |
 
 **Try it locally:** log in at http://localhost:8000/ (through Keycloak) with a Request User, open the browser console on that page and run:
@@ -331,7 +385,7 @@ Every user of an organization manages their own tokens; an Org Admin manages all
 - The value starts with `bpc_`, so secret scanners can recognise a leaked token, followed by 320 random bits (still 300 after the visible first 8 characters); it is stored only as a SHA-256 hash (REQ-SEC-002). `token` appears **only in the `POST` answer**; afterwards no page or response shows more than the first 8 characters (`prefix`, REQ-FUNC-022).
 - Tokens never expire unless `expiresAt` is set; it must lie in the future and in 2100 or earlier. Revoking is final.
 - Deactivating a user revokes all their tokens; reactivating does not bring them back. Deleting a user deletes their tokens (REQ-FUNC-023).
-- Errors use the same format and codes as `/api/v1/checks`, plus `404 NOT_FOUND` for a token of another user (unless you are Org Admin) or of another organization (REQ-FUNC-013). Creating a token for another user without the Org Admin role is `403 PERMISSION_DENIED`; the Super Admin has no organization and gets 403.
+- Errors use the same format and codes as `/api/v1/checks` (including 401 `INVALID_TOKEN` and 429), plus `404 NOT_FOUND` for a token of another user (unless you are Org Admin) or of another organization (REQ-FUNC-013). Creating a token for another user without the Org Admin role is `403 PERMISSION_DENIED`; the Super Admin has no organization and gets 403.
 
 ### Adding a data source
 
@@ -399,6 +453,7 @@ A work item is done when:
 - [ ] Code is reviewed and approved by another team member
 - [ ] CI is green: ruff passes and all tests pass
 - [ ] New logic has tests; test coverage of the check logic stays at or above 70 %
+- [ ] Every new test names the SRS requirement ID(s) it verifies in its docstring (see [Test names and SRS requirement IDs](#test-names-and-srs-requirement-ids))
 - [ ] Every database query is scoped to the user's organization, with a test that a user of organization A gets 404 on organization B's data (REQ-FUNC-013)
 - [ ] No secrets, API keys or personal data are committed
 - [ ] Documentation (this README, AGENTS.md, API reference) is updated if behaviour or setup changed
