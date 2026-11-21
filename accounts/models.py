@@ -33,11 +33,24 @@ class Organization(models.Model):
     is_verified = models.BooleanField(
         default=False, help_text="Set when the organization is registered by a user whose email Keycloak has verified."
     )
+    # REQ-FUNC-004: the VAT number is sent to VIES as the requester on every check, so it is verified once at
+    # registration. Empty means "VAT unverified": VIES could not answer, or the organization registered before
+    # the check existed.
+    vat_verified_at = models.DateTimeField(
+        "VAT verified at",
+        null=True,
+        blank=True,
+        help_text="When VIES confirmed the VAT number at registration. Empty means “VAT unverified”.",
+    )
     terms_accepted_at = models.DateTimeField()
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
+
+    @property
+    def vat_unverified(self):
+        return self.vat_verified_at is None
 
 
 class User(AbstractUser):

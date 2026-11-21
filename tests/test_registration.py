@@ -1,9 +1,15 @@
+from unittest import mock
+
 import pytest
+import requests
+from django.contrib.messages import get_messages
 from django.core.exceptions import ValidationError
 from django.urls import reverse
+from django.utils import timezone
 
 from accounts.models import Organization, User
 from accounts.validators import validate_vat_number
+from checks.sources.vies import VIES_URL
 
 VALID = {
     "organization_name": "Muster Bau GmbH",
@@ -19,6 +25,23 @@ def user(db, client):
     user = User.objects.create_user("anna@musterbau.at", first_name="Anna", last_name="Muster")
     client.force_login(user)
     return user
+
+
+def vies_answer(status=200, **body):
+    response = mock.Mock(status_code=status)
+    response.json.return_value = body
+    return response
+
+
+VIES_VALID = vies_answer(countryCode="AT", vatNumber="U12345678", valid=True, name="MUSTER BAU GMBH", address="---")
+VIES_INVALID = vies_answer(countryCode="AT", vatNumber="U12345678", valid=False, name="---", address="---")
+
+
+@pytest.fixture(autouse=True)
+def vies():
+    """VIES is never called for real; by default it confirms the number. Tests change return_value/side_effect."""
+    with mock.patch("checks.sources.http.requests.post", return_value=VIES_VALID) as post:
+        yield post
 
 
 def register(client, **changes):
@@ -106,11 +129,100 @@ def test_missing_field_rejected(client, user, field):
     assert not Organization.objects.exists()
 
 
-def test_malformed_vat_rejected_in_form(client, user):
-    """Verifies REQ-FUNC-001."""
+def test_malformed_vat_rejected_in_form(client, user, vies):
+    """Verifies REQ-FUNC-001, REQ-FUNC-004."""
     response = register(client, vat_number="ATU123")
     assert "vat_number" in response.context["form"].errors
     assert not Organization.objects.exists()
+    vies.assert_not_called()  # a malformed number is rejected before VIES is asked
+
+
+# --- VIES check of the organization's own VAT number (REQ-FUNC-004, SCRUM-52) ---
+
+
+def test_vat_number_confirmed_by_vies_is_verified(client, user, vies):
+    """REQ-FUNC-004: VIES is asked about the normalized number, and a valid answer marks it verified."""
+    response = register(client)
+    assert response.status_code == 302
+
+    org = Organization.objects.get()
+    assert org.vat_verified_at is not None
+    assert not org.vat_unverified
+    vies.assert_called_once()
+    assert vies.call_args.args == (VIES_URL,)
+    assert vies.call_args.kwargs["json"] == {"countryCode": "AT", "vatNumber": "U12345678"}
+    assert not list(get_messages(response.wsgi_request))
+
+
+def test_vat_number_invalid_in_vies_is_rejected(client, user, vies):
+    """REQ-FUNC-004: an invalid number is rejected with a clear message and nothing is created."""
+    vies.return_value = VIES_INVALID
+    response = register(client)
+
+    assert response.status_code == 200
+    errors = response.context["form"].errors["vat_number"]
+    assert errors == [
+        "VIES, the EU's VAT number register, reports ATU12345678 as not valid. "
+        "Enter your organization's own VAT number exactly as it appears on your invoices."
+    ]
+    assert "reports ATU12345678 as not valid" in response.content.decode()
+    assert not Organization.objects.exists()
+    user.refresh_from_db()
+    assert user.organization is None
+    assert not (user.is_org_admin or user.is_request_user or user.is_review_user)
+
+
+@pytest.mark.parametrize(
+    "answers",
+    [
+        [requests.Timeout(), requests.Timeout()],
+        [requests.ConnectionError(), requests.ConnectionError()],
+        [vies_answer(status=503), vies_answer(status=503)],
+        [vies_answer(actionSucceed=False, errorWrappers=[{"error": "MS_UNAVAILABLE"}])],
+        [vies_answer(userError="MS_MAX_CONCURRENT_REQ", valid=False)],
+        [vies_answer(status=200)],  # no boolean "valid"
+    ],
+    ids=["timeout", "network-error", "http-503", "member-state-down", "overloaded", "invalid-response"],
+)
+def test_vies_unavailable_registers_as_vat_unverified(client, user, vies, answers):
+    """REQ-FUNC-004: if VIES gives no usable answer, the organization is registered and marked "VAT unverified"."""
+    vies.return_value = None
+    vies.side_effect = answers
+    response = register(client)
+
+    assert response.status_code == 302
+    org = Organization.objects.get()
+    assert org.vat_verified_at is None
+    assert org.vat_unverified
+    user.refresh_from_db()
+    assert user.organization == org and user.is_org_admin
+
+    shown = response.client.get(response.url).content.decode()
+    assert "marked “VAT unverified”" in shown
+
+
+def test_vies_answer_after_one_retry_counts_as_verified(client, user, vies):
+    """REQ-FUNC-004: a transient VIES error is retried once (REQ-REL-003) before the number counts as unverified."""
+    vies.side_effect = [requests.Timeout(), VIES_VALID]
+    register(client)
+    assert Organization.objects.get().vat_verified_at is not None
+    assert vies.call_count == 2
+
+
+def test_operator_can_filter_vat_unverified_organizations(client, db):
+    """REQ-FUNC-004: the Super Admin finds the organizations marked "VAT unverified" in the admin."""
+    common = {"address": "x", "terms_accepted_at": timezone.now()}
+    Organization.objects.create(
+        name="Checked Bau GmbH", vat_number="ATU11111111", vat_verified_at=timezone.now(), **common
+    )
+    Organization.objects.create(name="Unchecked Bau GmbH", vat_number="ATU22222222", **common)
+    client.force_login(User.objects.create_superuser("admin@bizpartnercheck.at", "x"))
+
+    url = reverse("admin:accounts_organization_changelist")
+    unverified = client.get(url, {"vat": "unverified"}).content.decode()
+    assert "Unchecked Bau GmbH" in unverified and "Checked Bau GmbH" not in unverified
+    verified = client.get(url, {"vat": "verified"}).content.decode()
+    assert "Checked Bau GmbH" in verified and "Unchecked Bau GmbH" not in verified
 
 
 def test_user_with_organization_cannot_register_another(client, user):

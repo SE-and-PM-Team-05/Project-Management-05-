@@ -25,6 +25,15 @@ the same 8 s budget, so the check still runs; the result then has no `requestIde
 VIES wants the country code and the rest of the number separately. BizPartnerCheck normalizes the input
 first (`atu 123 456 78` → `ATU12345678`) and splits after the second character.
 
+## At registration (REQ-FUNC-004, SCRUM-52)
+
+The registering organization's own VAT number is checked once, with the same call, budget and retry, without
+a requester (`accounts/forms.py`, `verify_own_vat_number`). `valid: false` rejects the registration with a
+form error. Every case the table under "Error cases" turns into `SOURCE_UNAVAILABLE` registers the
+organization anyway, with `Organization.vat_verified_at` empty ("VAT unverified"); the Super Admin filters for
+these under `/admin/` → Organizations. The number is not checked again later, so an unverified organization
+may still send a requester VIES rejects.
+
 ## Response fields used
 
 | Field | Used for |
