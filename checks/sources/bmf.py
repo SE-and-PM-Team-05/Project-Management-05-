@@ -39,7 +39,7 @@ def normalize_fn(fn):
 
 
 def find_match(partner, entries):
-    """Return (result, details) for a partner against list entries (VAT, then FN, then name only)."""
+    """Return (result, details) for a partner against list entries (VAT, then FN, then name if one was given)."""
     for entry in entries:
         if entry.vat_number == partner.vat_number:
             return TRUE, entry_details(entry, "vatNumber")
@@ -49,6 +49,9 @@ def find_match(partner, entries):
             if normalize_fn(entry.company_register_number) == fn:
                 return TRUE, entry_details(entry, "companyRegisterNumber")
     name = normalize_company_name(partner.company_name)
+    if not name:
+        # No name given (SCRUM-93): VAT number and FN were the only keys.
+        return FALSE, {}
     # A name alone is no proof, so it only gives UNKNOWN / AMBIGUOUS_MATCH for a person to review.
     candidates = [entry_details(e, "name") for e in entries if normalize_company_name(e.name) == name]
     if candidates:

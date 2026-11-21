@@ -6,7 +6,7 @@ Uses the European Commission's VIES REST API; see docs/sources/vies.md for field
 import logging
 
 from ..names import names_match
-from ..results import FALSE, NO_DETAILS_FOUND, TRUE
+from ..results import FALSE, NO_DETAILS_FOUND, NOT_APPLICABLE, TRUE
 from .base import SourceAdapter
 from .http import SourceUnavailable, post_within_budget
 
@@ -94,7 +94,11 @@ class ViesAdapter(SourceAdapter):
         try:
             data, queried_at = query_vies(partner.vat_number, deadline, partner.requesting_organization_vat_number)
         except ViesUnavailable as error:
-            return self.unavailable(error.code)
+            vat_valid, name_check = self.unavailable(error.code)
+            if not partner.company_name:
+                # Nothing to compare without a name, whether or not VIES answered (REQ-FUNC-032).
+                name_check = self.result("nameMatchesVat", NOT_APPLICABLE, None)
+            return [vat_valid, name_check]
 
         registered_name = _text(data.get("name"))
         vat_details = {}
@@ -104,7 +108,11 @@ class ViesAdapter(SourceAdapter):
             vat_details["registeredAddress"] = _text(data.get("address"))
 
         vat_valid = self.result("vatValid", TRUE if data["valid"] else FALSE, queried_at, details=vat_details)
-        if registered_name is None:
+        if not partner.company_name:
+            # No name given (REQ-FUNC-032): nothing to compare, but the registered name is still reported.
+            details = {"registeredName": registered_name} if registered_name else {}
+            name_check = self.result("nameMatchesVat", NOT_APPLICABLE, queried_at, details=details)
+        elif registered_name is None:
             # Some member states (e.g. Germany) never share the name; invalid numbers have none either.
             name_check = self.unknown("nameMatchesVat", NO_DETAILS_FOUND, queried_at)
         else:

@@ -46,7 +46,9 @@ def parse_check_input(data):
         except ValidationError as error:
             errors["vatNumber"] = error.messages
 
-    company_name = text("companyName", required=True, max_length=MAX_NAME_LENGTH)
+    # Optional since the Sprint 2 review (SCRUM-93): without it, nameMatchesVat is NOT_APPLICABLE and the BMF
+    # check skips its name step.
+    company_name = text("companyName", max_length=MAX_NAME_LENGTH)
     if company_name and not re.search(r"\w", company_name):
         errors["companyName"] = [_("Enter a company name.")]
 

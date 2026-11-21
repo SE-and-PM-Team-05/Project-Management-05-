@@ -34,6 +34,8 @@ One `<item>` per listed company or person: `title` is the name; `description` is
 2. **FN**: for entries without a UID; 1,511 entries (89 %) have a UID or an FN.
 3. **Normalized name**: needed for the remaining **192 entries (11 %) with neither**. A name-only hit is never a
    definite match; it is reported as `UNKNOWN` / `AMBIGUOUS_MATCH` with the candidate entry (open decision OD-01).
+   This step only runs when the check includes a company name, which is optional (SCRUM-93); without one, those
+   192 entries can't be found, and the result is `FALSE` unless the VAT number or FN matches.
 
 This confirms assumption A4 for most entries and answers the BMF part of OD-05: the feed does contain VAT numbers.
 

@@ -75,7 +75,7 @@ class CheckRequest(ImmutableModel):
     token_name = models.CharField(max_length=100, blank=True)
 
     vat_number = models.CharField(max_length=20)
-    company_name = models.CharField(max_length=200)
+    company_name = models.CharField(max_length=200, blank=True)
     company_register_number = models.CharField(max_length=20, blank=True)
     address = models.TextField(blank=True)
     required_license_codes = models.JSONField(default=list, blank=True)
@@ -94,7 +94,8 @@ class CheckRequest(ImmutableModel):
 
     def to_json(self):
         """The stored request in the response shape of SRS Appendix B (REQ-FUNC-045), without disclaimer."""
-        partner = {"companyName": self.company_name, "vatNumber": self.vat_number}
+        partner = {"companyName": self.company_name} if self.company_name else {}
+        partner["vatNumber"] = self.vat_number
         if self.company_register_number:
             partner["companyRegisterNumber"] = self.company_register_number
         if self.address:

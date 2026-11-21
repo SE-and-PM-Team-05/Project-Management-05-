@@ -39,6 +39,11 @@ Some member states (e.g. Germany) never share name or address; VIES then sends `
 BizPartnerCheck treats `---`, an empty string and a missing field the same: `nameMatchesVat` becomes
 `UNKNOWN / NO_DETAILS_FOUND`. An invalid number has no name either, so the same applies there.
 
+The company name is optional in a check (SCRUM-93). Without it, `nameMatchesVat` is `NOT_APPLICABLE`: when
+VIES answered with a name it is still reported as `details.registeredName`, so the user sees whom the VAT
+number belongs to. It stays `NOT_APPLICABLE` when VIES is down or the number is invalid, because there was
+nothing to compare in the first place; only `vatValid` becomes `UNKNOWN` or `FALSE` then.
+
 ## Name matching (REQ-FUNC-032, SRS 3.6)
 
 Deterministic, no fuzzy logic. Both names are lower-cased, dots are dropped, other punctuation becomes a

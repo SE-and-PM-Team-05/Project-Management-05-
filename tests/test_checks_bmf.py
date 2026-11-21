@@ -87,6 +87,31 @@ def test_req_func_033_name_only_match_is_ambiguous(db):
     assert result.stale is False
 
 
+def test_req_func_033_without_a_name_vat_number_still_matches(db):
+    """REQ-FUNC-033: a check with only a VAT number still finds a listed company by its VAT number (SCRUM-93)."""
+    make_sync()
+    make_entry(vat_number="ATU12345678")
+    result = run(Partner(vat_number="ATU12345678"))
+    assert (result.result, result.details["matchedBy"]) == ("TRUE", "vatNumber")
+
+
+def test_req_func_033_without_a_name_fn_still_matches(db):
+    """REQ-FUNC-033."""
+    make_sync()
+    make_entry(vat_number="ATU99999999", company_register_number="123456a")
+    result = run(Partner(vat_number="ATU12345678", company_register_number="123456a"))
+    assert (result.result, result.details["matchedBy"]) == ("TRUE", "companyRegisterNumber")
+
+
+def test_req_func_033_without_a_name_there_is_no_name_step(db):
+    """REQ-FUNC-033: no name given means no name comparison, so no AMBIGUOUS_MATCH, only FALSE."""
+    make_sync()
+    make_entry(name="Schein Bau GmbH", vat_number="ATU99999999")
+    make_entry(name="", vat_number="ATU88888888")  # an empty normalized name must not match an empty input
+    result = run(Partner(vat_number="ATU12345678"))
+    assert (result.result, result.reason, result.details) == ("FALSE", None, {})
+
+
 def test_req_func_033_no_match_is_false(db):
     """Verifies REQ-FUNC-033."""
     make_sync()
