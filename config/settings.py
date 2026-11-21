@@ -167,8 +167,9 @@ STORAGES = {
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# The database cache is shared by all app processes, so failed-login counts (REQ-SEC-004) add up across them.
-# Its table is created once per database with `python manage.py createcachetable`.
+# Nothing uses the cache at the moment: the failed-login count (REQ-SEC-004) moved to its own table,
+# accounts.LoginFailure, so it can be raised in one atomic step (SCRUM-54). The database cache stays configured,
+# and its table is still created once per database with `python manage.py createcachetable`.
 CACHES = {"default": {"BACKEND": "django.core.cache.backends.db.DatabaseCache", "LOCATION": "django_cache"}}
 
 # A session ends after 8 h without activity (REQ-SEC-006): every request renews the 8 h. The session and CSRF
