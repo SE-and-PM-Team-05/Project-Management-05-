@@ -3,7 +3,7 @@ from django.core.exceptions import ValidationError
 from django.urls import reverse
 
 from accounts.models import Organization, User
-from accounts.validators import validate_vat_number
+from accounts.validators import EU_PREFIXES, validate_vat_number
 
 VALID = {
     "organization_name": "Muster Bau GmbH",
@@ -32,23 +32,63 @@ def test_landing_page_offers_register_and_login(client):
     assert reverse("oidc_authentication_init") in html
 
 
-@pytest.mark.parametrize(
-    "vat",
-    [
-        "ATU12345678",
-        "DE123456789",
-        "FR12345678901",
-        "NL123456789B01",
-        "BE0123456789",
-        "EL123456789",
-        "ESX1234567X",
-        "IE1234567WA",
-        "XIGD123",
-    ],
-)
+# At least one valid example per country, built from the VIES FAQ table "VAT identification number
+# structure" (SCRUM-56); several where a country has more than one format.
+VALID_EXAMPLES = [
+    "ATU12345678",
+    "BE0123456789",
+    "BE1123456789",
+    "BG123456789",
+    "BG1234567890",
+    "CY12345678L",
+    "CZ12345678",
+    "CZ123456789",
+    "CZ1234567890",
+    "DE123456789",
+    "DK12 34 56 78",
+    "EE123456789",
+    "EL123456789",
+    "ESX1234567X",
+    "ESA12345678",
+    "ES12345678Z",
+    "FI12345678",
+    "FR12345678901",
+    "FRAB123456789",
+    "HR12345678901",
+    "HU12345678",
+    "IE1S12345L",
+    "IE1234567WA",
+    "IE1234567T",
+    "IT12345678901",
+    "LT123456789",
+    "LT123456789012",
+    "LU12345678",
+    "LV12345678901",
+    "MT12345678",
+    "NL123456789B01",
+    "PL1234567890",
+    "PT123456789",
+    "RO12",
+    "RO1234567890",
+    "SE123456789001",
+    "SI12345678",
+    "SK1234567890",
+    "XI123456789",
+    "XI123456789012",
+    "XIGD123",
+    "XIHA123",
+]
+
+
+@pytest.mark.parametrize("vat", VALID_EXAMPLES)
 def test_valid_vat_formats(vat):
-    """Verifies REQ-FUNC-001."""
+    """REQ-FUNC-001, REQ-FUNC-031: every format in the VIES structure table is accepted."""
     validate_vat_number(vat)
+
+
+def test_every_country_has_a_valid_example():
+    """REQ-FUNC-031: the list above covers every prefix VIES accepts."""
+    assert {vat[:2] for vat in VALID_EXAMPLES} == EU_PREFIXES
 
 
 @pytest.mark.parametrize(
@@ -65,6 +105,10 @@ def test_valid_vat_formats(vat):
         "NL123456789",
         "FR123",
         "ITABCDEFGHIJK",
+        "ES123456789",  # first and last character both digits (VIES FAQ)
+        "RO1",
+        "LT1234567890",
+        "IE1A34567WX",  # old Irish format with two trailing letters (VIES FAQ)
     ],
 )
 def test_malformed_vat_rejected(vat):

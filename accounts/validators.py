@@ -35,6 +35,7 @@ EU_PREFIXES = {
 }
 # Format of each member state's VAT number, including the prefix, as published by the European
 # Commission for VIES (REQ-FUNC-031). Only the shape is checked here; VIES says whether it exists.
+# Compared with the VIES FAQ table "VAT identification number structure" (SCRUM-56, docs/sources/vies.md).
 COUNTRY_FORMATS = {
     "AT": r"ATU\d{8}",
     "BE": r"BE[01]\d{9}",
@@ -45,12 +46,14 @@ COUNTRY_FORMATS = {
     "DK": r"DK\d{8}",
     "EE": r"EE\d{9}",
     "EL": r"EL\d{9}",
-    "ES": r"ES[0-9A-Z]\d{7}[0-9A-Z]",
+    # 9 characters; the first and last may be letters, but not both digits (VIES FAQ).
+    "ES": r"ES([A-Z]\d{7}[0-9A-Z]|\d{8}[A-Z])",
     "FI": r"FI\d{8}",
     "FR": r"FR[0-9A-Z]{2}\d{9}",
     "HR": r"HR\d{11}",
     "HU": r"HU\d{8}",
-    "IE": r"IE\d[0-9A-Z+*]\d{5}[A-Z]{1,2}",
+    # Old format 9S99999L, or new format 7 digits and 1-2 letters (VIES FAQ).
+    "IE": r"IE(\d[0-9A-Z+*]\d{5}[A-Z]|\d{7}[A-Z]{1,2})",
     "IT": r"IT\d{11}",
     "LT": r"LT(\d{9}|\d{12})",
     "LU": r"LU\d{8}",
