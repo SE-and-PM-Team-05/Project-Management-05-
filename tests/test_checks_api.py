@@ -11,11 +11,13 @@ from django.contrib import admin
 from django.db import DatabaseError
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.html import escape
 
 from accounts.models import Organization, User
 from checks.models import CheckRequest, CheckRequestResult
 from checks.sources.base import SourceAdapter
 from checks.sources.vies import ViesAdapter
+from checks.views import DISCLAIMER
 
 URL = "/api/v1/checks"
 VALID_INPUT = {"vatNumber": "atu 123.456-78", "companyName": "Muster Bau GmbH"}
@@ -411,6 +413,42 @@ def test_req_func_050_list_sync_time_is_stored_as_data_timestamp(api, vies):
         body = post(api, VALID_INPUT).json()
     stored = CheckRequestResult.objects.get(request_id=body["requestId"], check_name="onTestList")
     assert stored.data_timestamp == synced_at
+
+
+# --- HTML result page (REQ-FUNC-046) ---
+
+
+def text_values(value):
+    """Every string and number in a JSON value, however deeply nested."""
+    if isinstance(value, dict):
+        return [v for item in value.values() for v in text_values(item)]
+    if isinstance(value, list):
+        return [v for item in value for v in text_values(item)]
+    if isinstance(value, bool) or value is None:
+        return []
+    return [str(value)]
+
+
+def test_req_func_046_html_page_shows_every_json_field(api, vies):
+    """REQ-FUNC-046, REQ-FUNC-048: Accept: text/html gives a page with every value of the JSON body."""
+    data = {**VALID_INPUT, "companyRegisterNumber": "123456a", "address": "Hauptstraße 1", "reference": "PO-4711"}
+    response = api.post(URL, data, content_type="application/json", HTTP_ACCEPT="text/html")
+    assert response.status_code == 200
+    assert response["Content-Type"].startswith("text/html")
+    page = response.content.decode()
+    body = {**CheckRequest.objects.get().to_json(), "disclaimer": str(DISCLAIMER)}
+    missing = [value for value in text_values(body) if escape(value) not in page]
+    assert not missing
+    assert "@media print" in page  # printable: the site header is hidden when printing
+
+
+@pytest.mark.parametrize("accept", [None, "*/*", "application/json", "text/html;q=0.5, application/json"])
+def test_req_func_046_json_stays_the_default(api, vies, accept):
+    """REQ-FUNC-046: JSON unless the client prefers HTML."""
+    headers = {"HTTP_ACCEPT": accept} if accept else {}
+    response = api.post(URL, VALID_INPUT, content_type="application/json", **headers)
+    assert response["Content-Type"] == "application/json"
+    assert "requestId" in response.json()
 
 
 def checks_of_body(body):

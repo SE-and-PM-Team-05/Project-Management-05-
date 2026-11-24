@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% comment %}
+REQ-FUNC-046: the same content as the JSON response of POST /api/v1/checks, printable.
+Every JSON field is shown; if a field is added to the response, add it here too.
+{% endcomment %}
+{% block title %}Partner check {{ body.partner.vatNumber }} – BizPartnerCheck{% endblock %}
+{% block content %}
+<style>
+  body { max-width: 64rem; }  /* the results table has 7 columns */
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: .2rem 1rem; }
+  dt { font-weight: 600; }
+  dd { margin: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  th, td { border: 1px solid #ccc; padding: .3rem .5rem; text-align: left; vertical-align: top; }
+  pre { margin: 0; white-space: pre-wrap; font-size: .8rem; }
+  @media print {
+    header { display: none; }
+    body { max-width: none; margin: 0; }
+  }
+</style>
+
+<h1>Partner check {{ body.partner.vatNumber }}</h1>
+
+<h2>Request</h2>
+<dl>
+  <dt>Request ID</dt><dd>{{ body.requestId }}</dd>
+  <dt>Received (UTC)</dt><dd>{{ body.receivedAt }}</dd>
+  <dt>Completed (UTC)</dt><dd>{{ body.completedAt }}</dd>
+  <dt>Organization</dt><dd>{{ body.organization }}</dd>
+  <dt>Requested by</dt><dd>{{ body.requestedBy.user }}</dd>
+  <dt>Channel</dt><dd>{{ body.requestedBy.channel }}</dd>
+  <dt>API token</dt><dd>{{ body.requestedBy.tokenName|default:"–" }}</dd>
+  {% if body.reference %}<dt>Your reference</dt><dd>{{ body.reference }}</dd>{% endif %}
+</dl>
+
+<h2>Partner</h2>
+<dl>
+  <dt>Company name</dt><dd>{{ body.partner.companyName|default:"–" }}</dd>
+  <dt>VAT number</dt><dd>{{ body.partner.vatNumber }}</dd>
+  {% if body.partner.companyRegisterNumber %}<dt>Company register number (FN)</dt><dd>{{ body.partner.companyRegisterNumber }}</dd>{% endif %}
+  {% if body.partner.address %}<dt>Address</dt><dd>{{ body.partner.address|linebreaksbr }}</dd>{% endif %}
+  {% if body.partner.requiredLicenseCodes %}<dt>Required license codes</dt><dd>{{ body.partner.requiredLicenseCodes|join:", " }}</dd>{% endif %}
+</dl>
+
+<h2>Results</h2>
+{% if "allChecksPassed" in body %}
+<p><strong>All checks passed: {{ body.allChecksPassed|yesno:"yes,no" }}</strong> (a summary, not a decision)</p>
+{% endif %}
+<table>
+  <thead>
+    <tr><th>Check</th><th>Result</th><th>Reason</th><th>Source</th><th>Data timestamp (UTC)</th><th>Stale</th><th>Details</th></tr>
+  </thead>
+  <tbody>
+    {% for check in checks %}
+    <tr>
+      <td>{{ check.check }}</td>
+      <td><strong>{{ check.result }}</strong></td>
+      <td>{{ check.reason|default:"" }}</td>
+      <td>{{ check.source }}</td>
+      <td>{{ check.dataTimestamp|default:"" }}</td>
+      <td>{% if check.stale is not None %}{{ check.stale|yesno:"yes,no" }}{% endif %}</td>
+      <td>{% if check.details_text %}<pre>{{ check.details_text }}</pre>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><em>{{ body.disclaimer }}</em></p>
+{% endblock %}

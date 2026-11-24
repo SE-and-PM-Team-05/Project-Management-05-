@@ -333,6 +333,8 @@ Response (shortened):
 }
 ```
 
+With `Accept: text/html` the same call returns a printable HTML page with every field of the JSON response (REQ-FUNC-046; template `templates/checks/result.html`). JSON stays the default, also for `Accept: */*`. Error responses are always JSON.
+
 Each `result` is `TRUE`, `FALSE`, `UNKNOWN` (with `reason`: `SOURCE_UNAVAILABLE` or `NO_DETAILS_FOUND`) or `NOT_APPLICABLE`. `UNKNOWN` is never a pass or a fail. If VIES is down, the call still returns **200** with both checks `UNKNOWN / SOURCE_UNAVAILABLE`; VIES gets at most 8 s including one retry.
 
 Errors return `{"error": {"code": "…", "message": "…", "fields": {…}}}`:
