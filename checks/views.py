@@ -1,12 +1,13 @@
-"""REST API v1 for partner checks (REQ-INT-010)."""
+"""Partner checks: REST API v1 (REQ-INT-010) and the web form (REQ-FUNC-042)."""
 
 import json
 import logging
 from dataclasses import replace
 
+from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.http import JsonResponse
+from django.http import HttpResponseForbidden, JsonResponse
 from django.middleware.csrf import CsrfViewMiddleware
 from django.shortcuts import render
 from django.utils.translation import gettext as _
@@ -81,20 +82,58 @@ def _create_check(request):
         # Invalid input is rejected before any source is called (REQ-FUNC-030).
         return api_error(400, "INVALID_INPUT", _("Some fields are invalid."), error.message_dict)
 
-    # The organization's own VAT number: the HFU service needs it (REQ-FUNC-034), and it lets VIES return a
-    # reference number (REQ-FUNC-050).
-    partner = replace(partner, requesting_organization_vat_number=user.organization.vat_number)
-    checks = run_checks(partner)
     token = getattr(request, "api_token", None)
-    check_request = store_check_request(user, partner, reference, checks, received_at, token)
-
-    # Response shape of SRS Appendix B (REQ-FUNC-045); only the checks implemented so far are listed.
-    body = check_request.to_json()
-    body["disclaimer"] = str(DISCLAIMER)  # REQ-FUNC-048
+    body = run_and_store(user, partner, reference, received_at, CheckRequest.CHANNEL_API, token)
     # JSON by default, also for "*/*"; the page only when the client prefers HTML (REQ-FUNC-046).
     if request.get_preferred_type(["application/json", "text/html"]) == "text/html":
         return render_result_page(request, body)
     return JsonResponse(body, status=200)
+
+
+def run_and_store(user, partner, reference, received_at, channel, token=None):
+    """Run all checks for a validated partner, store the request and return the response body.
+
+    The one check service behind the API and the web form, so both give the same result (REQ-FUNC-042).
+    """
+    # The organization's own VAT number: the HFU service needs it (REQ-FUNC-034), and it lets VIES return a
+    # reference number (REQ-FUNC-050).
+    partner = replace(partner, requesting_organization_vat_number=user.organization.vat_number)
+    checks = run_checks(partner)
+    check_request = store_check_request(user, partner, reference, checks, received_at, channel, token)
+    # Response shape of SRS Appendix B (REQ-FUNC-045); only the checks implemented so far are listed.
+    body = check_request.to_json()
+    body["disclaimer"] = str(DISCLAIMER)  # REQ-FUNC-048
+    return body
+
+
+# The form uses the API's field names, so its input goes through the same parse_check_input.
+FORM_FIELDS = ["vatNumber", "companyName", "companyRegisterNumber", "address", "reference"]
+
+
+@login_required
+def check_form(request):
+    """GET/POST /checks/new: start a check in the browser and get the result page (UC-05, REQ-FUNC-042)."""
+    user = request.user
+    if not (user.is_request_user and user.organization_id):
+        return HttpResponseForbidden(_("You need the Request User role to start a check."))
+    values, errors = {}, {}
+    if request.method == "POST":
+        received_at = utc_now()
+        values = {name: request.POST.get(name, "") for name in FORM_FIELDS}
+        values["requiredLicenseCodes"] = request.POST.get("requiredLicenseCodes", "")
+        data = {
+            **values,
+            # One text field, comma-separated, becomes the API's list.
+            "requiredLicenseCodes": [c.strip() for c in values["requiredLicenseCodes"].split(",") if c.strip()],
+        }
+        try:
+            partner, reference = parse_check_input(data)
+        except ValidationError as error:
+            errors = error.message_dict  # nothing is run or stored (REQ-FUNC-030)
+        else:
+            body = run_and_store(user, partner, reference, received_at, CheckRequest.CHANNEL_WEB)
+            return render_result_page(request, body)
+    return render(request, "checks/check_form.html", {"values": values, "errors": errors})
 
 
 def render_result_page(request, body):
@@ -108,7 +147,7 @@ def render_result_page(request, body):
     return render(request, "checks/result.html", {"body": body, "checks": checks})
 
 
-def store_check_request(user, partner, reference, checks, received_at, token=None):
+def store_check_request(user, partner, reference, checks, received_at, channel, token=None):
     """Store the request with all its results, or nothing (REQ-REL-004, REQ-FUNC-041).
 
     A database error propagates, so the caller answers with 500 and no partial record remains. The sources
@@ -119,7 +158,7 @@ def store_check_request(user, partner, reference, checks, received_at, token=Non
             organization=user.organization,
             requested_by=user,
             requested_by_name=user.get_full_name() or user.email,
-            channel=CheckRequest.CHANNEL_API,
+            channel=channel,
             # The token's name, never its value (REQ-FUNC-045, REQ-FUNC-050); empty for web-session calls.
             token_name=token.name if token else "",
             vat_number=partner.vat_number,
