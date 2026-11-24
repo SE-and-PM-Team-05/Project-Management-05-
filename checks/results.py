@@ -62,6 +62,33 @@ class CheckResult:
         return data
 
 
+# The value each check must have to count as passed (SRS 3.2.4). onHfuList is informational and left out
+# (REQ-FUNC-034): not being listed is normal, so it never counts as a pass or a fail.
+EXPECTED_VALUES = {
+    "vatValid": TRUE,
+    "nameMatchesVat": TRUE,
+    "listedAsFakeCompany": FALSE,
+    "inCompanyRegister": TRUE,
+    "inBusinessLicenseRegister": TRUE,
+    "hasRequiredLicenses": TRUE,
+}
+INFORMATIONAL_CHECKS = {"onHfuList"}
+
+
+def all_checks_passed(checks):
+    """REQ-FUNC-047: True only if every applicable check has its expected value.
+
+    `checks` are the response entries ({"check": ..., "result": ...}). NOT_APPLICABLE and informational checks
+    are skipped; UNKNOWN never equals an expected value, so it makes the summary False. A check missing from
+    EXPECTED_VALUES also makes it False, so a new check can't count as passed before its expected value is set.
+    """
+    return all(
+        entry["result"] == EXPECTED_VALUES.get(entry["check"])
+        for entry in checks
+        if entry["result"] != NOT_APPLICABLE and entry["check"] not in INFORMATIONAL_CHECKS
+    )
+
+
 def utc_now():
     return datetime.now(UTC)
 

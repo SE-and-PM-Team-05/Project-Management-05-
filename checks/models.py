@@ -22,7 +22,7 @@ from django.db import models
 
 from accounts.models import Organization
 
-from .results import NOT_APPLICABLE, format_utc
+from .results import NOT_APPLICABLE, all_checks_passed, format_utc
 
 
 class ImmutableQuerySet(models.QuerySet):
@@ -116,6 +116,7 @@ class CheckRequest(ImmutableModel):
         if self.reference:
             data["reference"] = self.reference
         data["checks"] = [result.to_json() for result in self.results.all()]
+        data["allChecksPassed"] = all_checks_passed(data["checks"])  # REQ-FUNC-047
         return data
 
 

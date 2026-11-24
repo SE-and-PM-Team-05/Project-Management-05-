@@ -13,7 +13,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from accounts.models import Organization, User
-from checks.models import CheckRequest, CheckRequestResult
+from checks.models import CheckRequest, CheckRequestResult, SyncLog
 from checks.sources.base import SourceAdapter
 from checks.sources.vies import ViesAdapter
 
@@ -106,6 +106,7 @@ def test_req_func_045_response_has_appendix_b_shape(api, vies):
     }
     assert body["reference"] == "PO-4711"
     assert "no liability" in body["disclaimer"]  # REQ-FUNC-048
+    assert isinstance(body["allChecksPassed"], bool)  # REQ-FUNC-047
     # Only the checks implemented so far; nothing invented for the others.
     assert [c["check"] for c in body["checks"]] == [
         "vatValid",
@@ -168,6 +169,7 @@ def test_req_int_012_vies_outage_still_returns_200_with_unknown(api, vies):
     # Other sources are independent of VIES and still answer (REQ-FUNC-039).
     assert checks["onHfuList"]["result"] == "FALSE"
     assert "no liability" in response.json()["disclaimer"]
+    assert response.json()["allChecksPassed"] is False  # UNKNOWN is never a pass (REQ-FUNC-047)
 
 
 # --- Invalid input (REQ-FUNC-030, REQ-INT-012) ---
@@ -411,6 +413,28 @@ def test_req_func_050_list_sync_time_is_stored_as_data_timestamp(api, vies):
         body = post(api, VALID_INPUT).json()
     stored = CheckRequestResult.objects.get(request_id=body["requestId"], check_name="onTestList")
     assert stored.data_timestamp == synced_at
+
+
+# transaction=True: the runner's BMF thread must see the committed sync (as in test_checks_bmf.py).
+@pytest.mark.django_db(transaction=True)
+def test_req_func_047_all_checks_passed_in_the_response(client, vies):
+    """REQ-FUNC-047: valid VAT, matching name, not on the synced fake-company list → true; HFU FALSE is ignored."""
+    now = timezone.now()
+    SyncLog.objects.create(
+        source=SyncLog.SOURCE_BMF, start_time=now, end_time=now, outcome=SyncLog.OUTCOME_SUCCESS
+    )  # fmt: skip
+    client.force_login(make_user(is_request_user=True))
+    body = post(client, VALID_INPUT).json()
+    assert checks_of_body(body)["listedAsFakeCompany"]["result"] == "FALSE"
+    assert checks_of_body(body)["onHfuList"]["result"] == "FALSE"
+    assert body["allChecksPassed"] is True
+
+
+def test_req_func_047_unsynced_fake_company_list_gives_false(api, vies):
+    """REQ-FUNC-047: without a BMF sync listedAsFakeCompany is UNKNOWN, so the summary is false."""
+    body = post(api, VALID_INPUT).json()
+    assert checks_of_body(body)["listedAsFakeCompany"]["result"] == "UNKNOWN"
+    assert body["allChecksPassed"] is False
 
 
 def checks_of_body(body):
