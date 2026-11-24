@@ -1,7 +1,7 @@
 # Software Requirements Specification
 ## For BizPartnerCheck
 
-Version 2.9 (combined team version)  
+Version 2.10 (combined team version)  
 Prepared by Luka Herceg, Elias Hoffstadt, WŚ and Tony  
 Practical Projects 2026/27  
 2026-10-22
@@ -29,6 +29,7 @@ Practical Projects 2026/27
 | Luka Herceg | 2026-11-18 | FUNC-072: the sync log is visible to the operator only, not to organizations, who see data freshness through `dataTimestamp` and `stale` on each result (review of PR #18, SCRUM-63) | 2.7 |
 | Team | 2026-11-19 | Customer feedback from the Sprint 2 review: a check needs only the VAT number, because typing the company name causes mismatches from spelling, capital letters and umlauts. companyName becomes optional; without it `nameMatchesVat` is NOT_APPLICABLE, the BMF check skips the name step and the Firmenbuch is searched by VAT number (1.2, UC-04, Firmenbuch row in 3.1, check table in 3.2, FUNC-030, FUNC-032, FUNC-033, FUNC-035, Appendix C C-03; SCRUM-93). The organization's own VAT number given at registration is now verified as a Must, because it is sent to VIES as the requester on every check (FUNC-004 S → M, moved from Sprint 4 to Sprint 3 in 2.8; SCRUM-52) | 2.8 |
 | Team | 2026-11-19 | GISA and Firmenbuch access granted; the Firmenbuch can be searched by VAT number. A1 confirmed and OD-06 closed; the live lookups are still to be demonstrated (POC-003; SCRUM-80, SCRUM-84) (SCRUM-20) | 2.9 |
+| Luka Herceg | 2026-11-24 | INT-006 added: after login every page the user's roles allow is reachable from the menu, because the team page could only be reached by typing its address. Impact: one new UI requirement in Sprint 3; traced to UN-02 and UN-04 (3.1.1, 2.8, traceability matrix; SCRUM-95) | 2.10 |
 
 ## 1. Introduction
 BizPartnerCheck is a multi-tenant web service that runs the due-diligence checks a construction company must perform on a prospective business partner in one request, and stores the result as evidence. Section 1 states purpose, scope and process; Section 2 describes the business case, stakeholders, use cases and constraints; Section 3 lists the verifiable requirements; Section 4 explains how they are verified; Section 5 holds supporting material.
@@ -241,7 +242,7 @@ Release R1 is the minimum end-to-end workflow; R2 completes the product; R3 hold
 | Spec phase | 08.10.–22.10. | – | This SRS; POCs REQ-POC-001…003 started |
 | Sprint 1 | 22.10.–05.11. | R1 | Platform and CI, registration, login, roles, tenant isolation, VAT and name check end-to-end (FUNC-001…003, 010…013, 030…032, 045; BUILD-*, INST-*) |
 | Sprint 2 | 05.11.–19.11. | R1 | Tokens, rate limit, list syncs, fake-company and HFU checks, evidence log (FUNC-020…023, 033, 034, 039…041, 050, 051, 070…073; SEC-001…005) |
-| Sprint 3 | 19.11.–03.12. | R1 | Firmenbuch and GISA checks, review web app, HTML response, web form, verified VAT number at registration (FUNC-004, 035…038, 042, 046…048, 052…055; INT-010…016) |
+| Sprint 3 | 19.11.–03.12. | R1 | Firmenbuch and GISA checks, review web app, HTML response, web form, verified VAT number at registration, menu navigation (FUNC-004, 035…038, 042, 046…048, 052…055; INT-006, 010…016) |
 | Sprint 4 | 03.12.–17.12. | R2 | Housekeeping, audit log, Super Admin console, German UI, hardening, QoS tests – **MVP demo** (FUNC-005, 014, 024, 060…063, 074; INT-001…005; remaining QoS) |
 | Sprint 5* | 17.12.–14.01. | R3 | Risk checks if capacity allows (FUNC-080…082); polish, documentation, final presentation |
 
@@ -260,6 +261,7 @@ Screens: landing page (Register, Login), registration, login and password reset,
 | REQ-INT-003 | The UI shall work in current Chrome, Firefox, Edge and Safari at widths from 360 px to 1920 px. | All screens usable at 360 and 1440 px in each browser. | M | I | UN-11 |
 | REQ-INT-004 | The UI should meet WCAG 2.1 AA for keyboard use, labels and contrast; check states are shown as text and colour, never colour alone. | Automated accessibility scan shows no critical violations. | S | T | R11 |
 | REQ-INT-005 | Every list shall show an empty state; every failed action shall show a message naming the problem and the fix, without technical details. | Each screen inspected with no data and with a forced server error. | M | I | UN-05 |
+| REQ-INT-006 | After login, the UI shall show a menu with a link to every page the user's roles allow and to no other page, so that no page has to be reached by typing its address. | For a Request User, an Org Admin and a user without an organization, the menu shows exactly the pages each may use; every page is reachable from the home page by links. | S | T | UN-02, UN-04 |
 
 #### 3.1.2 Hardware Interfaces
 None. Users need only a device with a current browser; no customer hardware or local server is required.
@@ -613,9 +615,9 @@ Each user need traces back to a business objective and forward to use cases and 
 | User need | BO | Use cases | Requirements |
 |---|---|---|---|
 | UN-01 Proof of checks | BO-2 | UC-06, UC-08 | FUNC-041, 045, 050…054, 061; REL-004; AVAIL-003 |
-| UN-02 One-step check | BO-1 | UC-04, UC-05 | FUNC-030…037, 042, 047; PERF-001, 002 |
+| UN-02 One-step check | BO-1 | UC-04, UC-05 | FUNC-030…037, 042, 047; INT-006; PERF-001, 002 |
 | UN-03 Integration | BO-3 | UC-03, UC-04 | FUNC-020, 046, 055; INT-010…015 |
-| UN-04 Access control | BO-3 | UC-02, UC-03, UC-08 | FUNC-010…012, 021…023, 062; SEC-002, 004 |
+| UN-04 Access control | BO-3 | UC-02, UC-03, UC-08 | FUNC-010…012, 021…023, 062; INT-006; SEC-002, 004 |
 | UN-05 Clear result per check | BO-1, BO-5 | UC-04, UC-05 | FUNC-032, 039, 048; INT-005, 013; REL-001, 003 |
 | UN-06 EU partners | BO-1 | UC-04 | FUNC-031, 038 |
 | UN-07 German and English | BO-4 | all UI use cases | INT-001, 002; FUNC-049 |
