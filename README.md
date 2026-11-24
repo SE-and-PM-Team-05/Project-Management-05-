@@ -329,9 +329,12 @@ Response (shortened):
     { "check": "nameMatchesVat", "result": "TRUE", "source": "VIES", "dataTimestamp": "2026-11-02T09:42:09Z",
       "details": { "registeredName": "MUSTER BAU GMBH" } }
   ],
+  "allChecksPassed": true,
   "disclaimer": "Informational only; …"
 }
 ```
+
+`allChecksPassed` is a convenience summary, not a decision (REQ-FUNC-047). It is `true` only if every applicable check has its expected value: `TRUE`, except `listedAsFakeCompany`, where `FALSE` is expected. `NOT_APPLICABLE` checks and the informational `onHfuList` are ignored, and any `UNKNOWN` makes it `false`. The rule is `all_checks_passed` in `checks/results.py`.
 
 Each `result` is `TRUE`, `FALSE`, `UNKNOWN` (with `reason`: `SOURCE_UNAVAILABLE` or `NO_DETAILS_FOUND`) or `NOT_APPLICABLE`. `UNKNOWN` is never a pass or a fail. If VIES is down, the call still returns **200** with both checks `UNKNOWN / SOURCE_UNAVAILABLE`; VIES gets at most 8 s including one retry.
 
