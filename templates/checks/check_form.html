@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% comment %}
+UC-05 / REQ-FUNC-042: the input of POST /api/v1/checks as a form. Field names are the API's, so the same
+parse_check_input validates them; the result is the page of templates/checks/result.html.
+{% endcomment %}
+{% block title %}New check – BizPartnerCheck{% endblock %}
+{% block content %}
+<h1>Check a business partner</h1>
+
+<form method="post">
+  {% csrf_token %}
+  {% if errors.items %}<p class="errorlist">Please correct the fields marked below. Nothing was checked.</p>{% endif %}
+
+  <label for="vatNumber">VAT number</label>
+  <input id="vatNumber" name="vatNumber" value="{{ values.vatNumber }}" required autofocus>
+  <span class="helptext">With its country prefix, e.g. ATU12345678</span>
+  {% for message in errors.vatNumber %}<p class="errorlist">{{ message }}</p>{% endfor %}
+
+  <label for="companyName">Company name</label>
+  <input id="companyName" name="companyName" value="{{ values.companyName }}">
+  <span class="helptext">Compared with the name registered in VIES</span>
+  {% for message in errors.companyName %}<p class="errorlist">{{ message }}</p>{% endfor %}
+
+  <label for="companyRegisterNumber">Company register number (FN)</label>
+  <input id="companyRegisterNumber" name="companyRegisterNumber" value="{{ values.companyRegisterNumber }}">
+  <span class="helptext">Austrian partners only, e.g. 123456a</span>
+  {% for message in errors.companyRegisterNumber %}<p class="errorlist">{{ message }}</p>{% endfor %}
+
+  <label for="address">Address</label>
+  <textarea id="address" name="address" rows="2">{{ values.address }}</textarea>
+  {% for message in errors.address %}<p class="errorlist">{{ message }}</p>{% endfor %}
+
+  <label for="requiredLicenseCodes">Required license codes</label>
+  <input id="requiredLicenseCodes" name="requiredLicenseCodes" value="{{ values.requiredLicenseCodes }}">
+  <span class="helptext">Separate several codes with commas</span>
+  {% for message in errors.requiredLicenseCodes %}<p class="errorlist">{{ message }}</p>{% endfor %}
+
+  <label for="reference">Your reference</label>
+  <input id="reference" name="reference" value="{{ values.reference }}">
+  <span class="helptext">E.g. your order number; shown on the result</span>
+  {% for message in errors.reference %}<p class="errorlist">{{ message }}</p>{% endfor %}
+
+  <button type="submit">Run check</button>
+</form>
+{% endblock %}

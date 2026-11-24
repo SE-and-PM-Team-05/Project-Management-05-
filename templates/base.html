@@ -20,6 +20,7 @@
     <a href="{% url 'home' %}"><strong>BizPartnerCheck</strong></a>
     <nav>
       {% if user.is_authenticated %}
+        {% if user.is_request_user and user.organization_id %}<a href="{% url 'check_form' %}">New check</a>{% endif %}
         {% if user.organization_id %}<a href="{% url 'api_tokens' %}">API tokens</a>{% endif %}
         <span style="margin-left:1rem">{{ user.email }}</span>
         <form method="post" action="{% url 'oidc_logout' %}" style="display:inline">{% csrf_token %}<button type="submit" style="margin:0 0 0 1rem">Log out</button></form>
