@@ -67,6 +67,26 @@ VIES is a search engine over national databases and that results are not guarant
 disclaimer (REQ-FUNC-048) covers this. There is no published rate limit, but VIES answers with
 `MS_MAX_CONCURRENT_REQ` / `GLOBAL_MAX_CONCURRENT_REQ` when overloaded, so we never retry those.
 
+## VAT number formats
+
+Before calling VIES, `accounts/validators.py` (`COUNTRY_FORMATS`) checks that a VAT number has the right
+shape for its country (REQ-FUNC-001, REQ-FUNC-031). VIES alone says whether the number exists.
+
+- **Source:** the table "VAT identification number structure" in the VIES FAQ (question 11) of the European
+  Commission: <https://ec.europa.eu/taxation_customs/vies/#/faq>. The same page says the Commission does not
+  publish the check-digit rules of the member states, so we check only the shape, not check digits.
+- **How it was compared (SCRUM-56, 2026-11-24):** the FAQ page is built in the browser and its table could
+  not be downloaded as text. Each pattern was compared with copies of the same table, mainly the EUIPO
+  document "European Union VAT identification numbers"
+  (<https://euipo.europa.eu/tunnel-web/secure/webdav/guest/document_library/Documents/COSME/VAT%20numbers%20EU.pdf>).
+  Two patterns differed and were fixed:
+  - Spain accepted 9 digits. The table says the first and last character may be letters but not both
+    digits, so `ES123456789` is now rejected.
+  - Ireland accepted the old format (`IE9S99999L`) with two letters at the end, e.g. `IE1A34567WX`. Only the
+    new format (7 digits and 1–2 letters) may end in two letters.
+- **Tests:** `tests/test_registration.py` has at least one valid example per country, and a test that the
+  examples cover every prefix.
+
 ## Open points
 
 - `TODO(SRS):` The endpoint and field names were taken from published descriptions of the VIES REST API;
