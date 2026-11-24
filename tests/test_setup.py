@@ -4,6 +4,7 @@ from django.core.management.base import CommandError
 from django.urls import reverse
 
 from accounts.models import User
+from checks.views import DISCLAIMER
 from config.settings import parse_database_url
 
 
@@ -27,6 +28,19 @@ def test_parse_database_url_passes_neon_ssl_options():
     db = parse_database_url(url)
     assert db["NAME"] == "neondb"
     assert db["OPTIONS"] == {"sslmode": "require", "channel_binding": "require"}
+
+
+@pytest.mark.parametrize("page", ["home", "terms"])
+def test_every_html_page_shows_the_disclaimer(client, page):
+    """REQ-FUNC-048: the footer of base.html carries the same disclaimer text as the JSON response."""
+    assert str(DISCLAIMER) in client.get(reverse(page)).content.decode()
+
+
+def test_disclaimer_states_all_three_points():
+    """REQ-FUNC-048: informational, source data not guaranteed complete or current, no liability."""
+    text = str(DISCLAIMER)
+    for phrase in ("Informational only", "not guaranteed complete or current", "no liability"):
+        assert phrase in text
 
 
 def test_home_and_healthz(client):

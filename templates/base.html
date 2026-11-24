@@ -1,4 +1,4 @@
-<!doctype html>
+{% load i18n %}<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -13,6 +13,7 @@
     .helptext { color: #555; font-size: .9rem; }
     .errorlist { color: #b00020; padding-left: 1.2rem; }
     button, .button { margin-top: 1.5rem; padding: .5rem 1.2rem; }
+    footer { margin-top: 3rem; color: #555; font-size: .85rem; }
   </style>
 </head>
 <body>
@@ -30,5 +31,7 @@
     </nav>
   </header>
   <main>{% block content %}{% endblock %}</main>
+  {# REQ-FUNC-048 on every HTML page; same text as checks.views.DISCLAIMER; tests/test_setup.py fails if the page doesn't contain it. #}
+  <footer>{% translate "Informational only; source data is not guaranteed complete or current. BizPartnerCheck carries no liability; the contracting decision remains with the customer." %}</footer>
 </body>
 </html>
