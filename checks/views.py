@@ -8,6 +8,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import JsonResponse
 from django.middleware.csrf import CsrfViewMiddleware
+from django.shortcuts import render
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy
 from django.views.decorators.csrf import csrf_exempt
@@ -90,7 +91,21 @@ def _create_check(request):
     # Response shape of SRS Appendix B (REQ-FUNC-045); only the checks implemented so far are listed.
     body = check_request.to_json()
     body["disclaimer"] = str(DISCLAIMER)  # REQ-FUNC-048
+    # JSON by default, also for "*/*"; the page only when the client prefers HTML (REQ-FUNC-046).
+    if request.get_preferred_type(["application/json", "text/html"]) == "text/html":
+        return render_result_page(request, body)
     return JsonResponse(body, status=200)
+
+
+def render_result_page(request, body):
+    """The JSON body as a printable HTML page with the same content (REQ-FUNC-046)."""
+    checks = [
+        {**check, "details_text": json.dumps(check["details"], indent=2, ensure_ascii=False)}
+        if "details" in check
+        else check
+        for check in body["checks"]
+    ]
+    return render(request, "checks/result.html", {"body": body, "checks": checks})
 
 
 def store_check_request(user, partner, reference, checks, received_at, token=None):
