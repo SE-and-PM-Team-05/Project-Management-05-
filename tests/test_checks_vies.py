@@ -192,6 +192,45 @@ def test_req_func_032_no_name_from_vies_is_no_details_found(name):
     assert results["vatValid"].result == "TRUE"
 
 
+# --- no company name given (SCRUM-93, REQ-FUNC-032) ---
+
+AT_VAT_ONLY = Partner(vat_number="ATU12345678")
+
+
+def test_req_func_032_no_name_given_is_not_applicable_with_the_registered_name():
+    """REQ-FUNC-032: without a name, nameMatchesVat is NOT_APPLICABLE and still reports the registered name."""
+    results, _ = run_vies(AT_VAT_ONLY, valid_answer(name="MUSTER BAU GMBH"))
+    assert results["vatValid"].result == "TRUE"
+    assert results["nameMatchesVat"].result == "NOT_APPLICABLE"
+    assert results["nameMatchesVat"].reason is None
+    assert results["nameMatchesVat"].details == {"registeredName": "MUSTER BAU GMBH"}
+    assert "dataTimestamp" not in results["nameMatchesVat"].to_json()  # SRS 3.2.4
+
+
+@pytest.mark.parametrize("registered", [None, "---"])
+def test_req_func_032_no_name_given_and_none_registered_is_not_applicable_without_details(registered):
+    """REQ-FUNC-032: e.g. a German number, where VIES never shares the name."""
+    results, _ = run_vies(Partner(vat_number="DE123456789"), valid_answer(name=registered))
+    assert results["nameMatchesVat"].result == "NOT_APPLICABLE"
+    assert results["nameMatchesVat"].details == {}
+
+
+def test_req_func_032_no_name_given_and_invalid_number_is_not_applicable():
+    """REQ-FUNC-031, REQ-FUNC-032."""
+    results, _ = run_vies(AT_VAT_ONLY, vies_response(valid=False, name="---", address="---"))
+    assert results["vatValid"].result == "FALSE"
+    assert results["nameMatchesVat"].result == "NOT_APPLICABLE"
+
+
+def test_req_func_032_no_name_given_and_vies_down_is_not_applicable_for_the_name():
+    """REQ-FUNC-031, REQ-FUNC-032: vatValid is UNKNOWN, but without a name there was nothing to compare anyway."""
+    results, _ = run_vies(AT_VAT_ONLY, requests.Timeout(), requests.Timeout())
+    assert (results["vatValid"].result, results["vatValid"].reason) == ("UNKNOWN", "SOURCE_UNAVAILABLE")
+    assert results["nameMatchesVat"].result == "NOT_APPLICABLE"
+    assert results["nameMatchesVat"].reason is None
+    assert results["nameMatchesVat"].source == "VIES"
+
+
 @pytest.mark.parametrize(
     ("given", "registered"),
     [

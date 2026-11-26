@@ -23,7 +23,7 @@ class Partner:
     """The validated, normalized input of one check request (REQ-FUNC-030)."""
 
     vat_number: str
-    company_name: str
+    company_name: str = ""  # optional (REQ-FUNC-030); empty when not given
     company_register_number: str = ""
     address: str = ""
     required_license_codes: tuple[str, ...] = ()

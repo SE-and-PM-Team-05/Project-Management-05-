@@ -170,16 +170,60 @@ def test_req_int_012_vies_outage_still_returns_200_with_unknown(api, vies):
     assert "no liability" in response.json()["disclaimer"]
 
 
+# --- VAT number only (SCRUM-93: REQ-FUNC-030, REQ-FUNC-032) ---
+
+
+@pytest.mark.parametrize("name", [None, "", "   "], ids=["missing", "empty", "blank"])
+def test_req_func_030_check_with_only_a_vat_number_is_accepted(api, vies, name):
+    """REQ-FUNC-030, REQ-FUNC-032: a missing or blank companyName is no error; the registered name is reported."""
+    data = {"vatNumber": "ATU12345678"} if name is None else {"vatNumber": "ATU12345678", "companyName": name}
+    response = post(api, data)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["partner"] == {"vatNumber": "ATU12345678"}
+    checks = checks_of(response)
+    assert checks["vatValid"]["result"] == "TRUE"
+    assert checks["nameMatchesVat"] == {
+        "check": "nameMatchesVat",
+        "result": "NOT_APPLICABLE",
+        "source": "VIES",
+        "details": {"registeredName": "MUSTER BAU GMBH"},
+    }
+    stored = CheckRequest.objects.get()
+    assert stored.company_name == ""
+    assert stored.to_json()["partner"] == {"vatNumber": "ATU12345678"}
+    assert stored.results.get(check_name="nameMatchesVat").result == "NOT_APPLICABLE"
+
+
+def test_req_func_032_check_with_a_company_name_works_as_before(api, vies):
+    """REQ-FUNC-030, REQ-FUNC-032: clients that still send companyName get the name compared and echoed back."""
+    with_name = post(api, VALID_INPUT).json()
+    without_name = post(api, {"vatNumber": VALID_INPUT["vatNumber"]}).json()
+
+    assert with_name["partner"] == {"companyName": "Muster Bau GmbH", "vatNumber": "ATU12345678"}
+    named = {c["check"]: c for c in with_name["checks"]}
+    unnamed = {c["check"]: c for c in without_name["checks"]}
+    assert named["nameMatchesVat"]["result"] == "TRUE"
+    assert unnamed["nameMatchesVat"]["result"] == "NOT_APPLICABLE"
+    # The name changes nothing else.
+    for check in ("vatValid", "listedAsFakeCompany", "onHfuList"):
+        assert {k: v for k, v in named[check].items() if k != "dataTimestamp"} == {
+            k: v for k, v in unnamed[check].items() if k != "dataTimestamp"
+        }
+
+
 # --- Invalid input (REQ-FUNC-030, REQ-INT-012) ---
 
 
 @pytest.mark.parametrize(
     ("data", "fields"),
     [
-        ({}, {"vatNumber", "companyName"}),
+        ({}, {"vatNumber"}),
         ({"companyName": "Muster Bau GmbH"}, {"vatNumber"}),
-        ({"vatNumber": "ATU12345678"}, {"companyName"}),
-        ({"vatNumber": "ATU12345678", "companyName": "   "}, {"companyName"}),
+        ({"vatNumber": "ATU12345678", "companyName": "---"}, {"companyName"}),
+        ({"vatNumber": "ATU12345678", "companyName": "___"}, {"companyName"}),
+        ({"vatNumber": "ATU12345678", "companyName": 42}, {"companyName"}),
         ({"vatNumber": "ATU1234567", "companyName": "X"}, {"vatNumber"}),
         ({"vatNumber": "US123456789", "companyName": "X"}, {"vatNumber"}),
         ({"vatNumber": "GR123456789", "companyName": "X"}, {"vatNumber"}),  # Greece is EL in VIES
