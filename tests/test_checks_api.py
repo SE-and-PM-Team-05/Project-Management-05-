@@ -222,6 +222,7 @@ def test_req_func_032_check_with_a_company_name_works_as_before(api, vies):
         ({}, {"vatNumber"}),
         ({"companyName": "Muster Bau GmbH"}, {"vatNumber"}),
         ({"vatNumber": "ATU12345678", "companyName": "---"}, {"companyName"}),
+        ({"vatNumber": "ATU12345678", "companyName": "___"}, {"companyName"}),
         ({"vatNumber": "ATU12345678", "companyName": 42}, {"companyName"}),
         ({"vatNumber": "ATU1234567", "companyName": "X"}, {"vatNumber"}),
         ({"vatNumber": "US123456789", "companyName": "X"}, {"vatNumber"}),
