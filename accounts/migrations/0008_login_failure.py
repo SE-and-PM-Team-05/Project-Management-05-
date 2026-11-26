@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("accounts", "0006_api_token_rate_limit"),
+        ("accounts", "0007_organization_vat_verified_at"),
     ]
 
     operations = [
