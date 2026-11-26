@@ -1,7 +1,7 @@
 # Software Requirements Specification
 ## For BizPartnerCheck
 
-Version 2.9 (combined team version)  
+Version 2.10 (combined team version)  
 Prepared by Luka Herceg, Elias Hoffstadt, WŚ and Tony  
 Practical Projects 2026/27  
 2026-10-22
@@ -29,6 +29,8 @@ Practical Projects 2026/27
 | Luka Herceg | 2026-11-18 | FUNC-072: the sync log is visible to the operator only, not to organizations, who see data freshness through `dataTimestamp` and `stale` on each result (review of PR #18, SCRUM-63) | 2.7 |
 | Team | 2026-11-19 | Customer feedback from the Sprint 2 review: a check needs only the VAT number, because typing the company name causes mismatches from spelling, capital letters and umlauts. companyName becomes optional; without it `nameMatchesVat` is NOT_APPLICABLE, the BMF check skips the name step and the Firmenbuch is searched by VAT number (1.2, UC-04, Firmenbuch row in 3.1, check table in 3.2, FUNC-030, FUNC-032, FUNC-033, FUNC-035, Appendix C C-03; SCRUM-93). The organization's own VAT number given at registration is now verified as a Must, because it is sent to VIES as the requester on every check (FUNC-004 S → M, moved from Sprint 4 to Sprint 3 in 2.8; SCRUM-52) | 2.8 |
 | Team | 2026-11-19 | GISA and Firmenbuch access granted; the Firmenbuch can be searched by VAT number. A1 confirmed and OD-06 closed; the live lookups are still to be demonstrated (POC-003; SCRUM-80, SCRUM-84) (SCRUM-20) | 2.9 |
+| Team | 2026-11-26 | FUNC-004: a VIES error code such as `INVALID_INPUT` at registration counts as "VIES unavailable" (organization registered, marked "VAT unverified"), not as an invalid number (review of the SCRUM-52 PR) | 2.10 |
+| Team | 2026-11-26 | SEC-004: the admin login's failed-login counter is kept in a database table (`accounts.LoginFailure`) instead of Django's cache, so simultaneous failures are each counted (review of the SCRUM-54 PR) | 2.10 |
 
 ## 1. Introduction
 BizPartnerCheck is a multi-tenant web service that runs the due-diligence checks a construction company must perform on a prospective business partner in one request, and stores the result as evidence. Section 1 states purpose, scope and process; Section 2 describes the business case, stakeholders, use cases and constraints; Section 3 lists the verifiable requirements; Section 4 explains how they are verified; Section 5 holds supporting material.
@@ -307,7 +309,7 @@ None. Users need only a device with a current browser; no customer hardware or l
 | REQ-FUNC-001 | The landing page shall offer Register and Login; a visitor shall be able to create a login in Keycloak (first name, last name, email, password) and then register an organization for free with organization name, address and VAT number, accepting the terms of use. | Missing fields and malformed VAT numbers rejected; on success the organization exists and the logged-in user is its first user with all three org roles. | M | T | UC-01, UN-11 |
 | REQ-FUNC-002 | Only users whose email address Keycloak has verified (verification link sent by Keycloak) shall be able to log in, register an organization or accept an invitation. | Login with an unverified email is refused; verified succeeds. | M | T | UC-01 |
 | REQ-FUNC-003 | Users shall log in through Keycloak (OpenID Connect authorization code flow) and be matched to their account by email address; logout shall also end the Keycloak session; password reset by email is offered by Keycloak. | Login and logout through Keycloak; deactivated users and the Super Admin are refused; reset flow in Keycloak. | M | T | C10, UC-01 |
-| REQ-FUNC-004 | The system shall check the registering organization's own VAT number via VIES. | Invalid → registration rejected; VIES unavailable → accepted and marked "VAT unverified". | M | T | UC-01 |
+| REQ-FUNC-004 | The system shall check the registering organization's own VAT number via VIES. | Invalid → registration rejected; VIES unavailable → accepted and marked "VAT unverified". Any other VIES answer without a usable `valid` (an error code such as `INVALID_INPUT`, or a malformed answer) counts as unavailable. | M | T | UC-01 |
 | REQ-FUNC-005 | A setup script shall create exactly one initial Super Admin with a one-time password that must be changed at first login. Self-registration of individual users without an Org Admin is not part of release 1.0 (W). | Script run on an empty system; forced password change observed. | M | T | UC-10 |
 
 #### 3.2.2 Users, Roles and Tenants
@@ -442,7 +444,7 @@ Targets marked (proposed) are starting points for confirmation by the customer (
 | REQ-SEC-001 | All traffic shall use HTTPS (TLS 1.2+) with HSTS; plain HTTP is redirected or refused. | TLS scan; HTTP call redirected. | M | T | C9 |
 | REQ-SEC-002 | User passwords shall be stored only in Keycloak (salted hashes); the Super Admin's password only as a salted hash by Django's built-in password hashing (PBKDF2 or Argon2); API tokens shall have ≥ 256 bits of randomness and be stored only as SHA-256 hashes. | Database inspection shows no plaintext secrets. | M | I | C10, UN-04 |
 | REQ-SEC-003 | The API shall allow at most 200 requests per minute per token, answering further requests with 429 and `Retry-After`; remaining quota is shown in response headers. | 201st request within a minute returns 429. | M | T | R2, UN-12 |
-| REQ-SEC-004 | Login shall be blocked for 15 min after 5 failed attempts for the same account (Keycloak brute-force detection for users; counter in Django's cache for the admin login). | 6th attempt refused even with correct password. | M | T | UN-04 |
+| REQ-SEC-004 | Login shall be blocked for 15 min after 5 failed attempts for the same account (Keycloak brute-force detection for users; counter in a database table, `accounts.LoginFailure`, for the admin login). | 6th attempt refused even with correct password. | M | T | UN-04 |
 | REQ-SEC-005 | All input shall be validated server-side against a schema; database access uses parameterized queries only. | Injection strings rejected or stored as plain text. | M | T | R11 |
 | REQ-SEC-006 | Web sessions shall use Secure, HttpOnly, SameSite cookies, expire after 8 h of inactivity and protect state-changing forms against CSRF. | Cookie flags inspected; expired session leads to login. | M | T | R11 |
 | REQ-SEC-007 | Logs and audit records shall never contain passwords, tokens or unnecessary personal data; access to them is restricted to authorized roles. | Log sample inspected; Request User cannot read logs. | M | I | C9 |

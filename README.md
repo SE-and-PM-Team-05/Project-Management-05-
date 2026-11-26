@@ -82,7 +82,7 @@ In every new terminal, run `.venv\Scripts\Activate.ps1` in the repository folder
 
 ### Both systems
 
-`createcachetable` creates the table Django's cache lives in; the failed-login counter needs it. Run it once per database; on Render, `build.sh` does it on every deploy.
+`createcachetable` creates the table Django's cache lives in. Nothing uses the cache at the moment (the failed-login counter has its own table since **SCRUM-54**), but the setup keeps the command until the team decides to drop it. Run it once per database; on Render, `build.sh` does it on every deploy.
 
 `create_superadmin` prints a one-time password. Log in at http://localhost:8000/admin/ and choose a new one. The command refuses to run if a Super Admin already exists.
 

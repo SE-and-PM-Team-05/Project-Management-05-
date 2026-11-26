@@ -78,6 +78,20 @@ class User(AbstractUser):
         return self.email
 
 
+class LoginFailure(models.Model):
+    """Failed password logins of one email address in the current 15-minute window (REQ-SEC-004).
+
+    Changed only by the single UPDATE statements in accounts/lockout.py, so simultaneous failures are each counted.
+    """
+
+    email = models.CharField(max_length=254, unique=True, help_text="Lower-cased, as typed at login.")
+    count = models.PositiveSmallIntegerField(default=0)
+    last_failed_at = models.DateTimeField()
+
+    def __str__(self):
+        return f"{self.email}: {self.count}"
+
+
 def invitation_expiry():
     return timezone.now() + timedelta(days=7)
 

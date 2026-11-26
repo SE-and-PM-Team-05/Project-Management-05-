@@ -1,12 +1,15 @@
 """Login through Keycloak, the admin's password login with lockout, and session rules (SCRUM-22)."""
 
+import threading
 from datetime import timedelta
 from unittest import mock
 from urllib.parse import parse_qs, urlparse
 
 import pytest
 from django.contrib.auth import authenticate
+from django.db import connection
 from django.test import Client
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
@@ -38,6 +41,19 @@ def user(db):
 @pytest.fixture
 def admin(db):
     return User.objects.create_superuser(ADMIN_EMAIL, PASSWORD)
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    """Call clock(minutes=…) to make timezone.now() return that much later than the start of the test."""
+    start = timezone.now()
+    now = {"value": start}
+    monkeypatch.setattr("django.utils.timezone.now", lambda: now["value"])
+
+    def move_to(**offset):
+        now["value"] = start + timedelta(**offset)
+
+    return move_to
 
 
 def keycloak_login(client, claims=CLAIMS, next_url=None):
@@ -202,14 +218,85 @@ def test_attempts_during_lock_do_not_extend_it(client, admin):
     assert lockout.failed_attempts(ADMIN_EMAIL) == lockout.MAX_FAILED_ATTEMPTS
 
 
-def test_lock_ends_after_15_minutes(client, admin, monkeypatch):
+def test_lock_ends_after_15_minutes(client, admin, clock):
     """Verifies REQ-SEC-004."""
     fail_admin_logins(client, 5)
     assert lockout.is_locked(ADMIN_EMAIL)
 
-    later = timezone.now() + timedelta(minutes=15, seconds=1)
-    monkeypatch.setattr("django.core.cache.backends.db.tz_now", lambda: later)
+    clock(minutes=15, seconds=1)
     assert admin_login(client).status_code == 302
+
+
+def test_attempts_during_lock_do_not_move_its_end(db, clock):
+    """REQ-SEC-004: the lock ends 15 minutes after the 5th failure, however many attempts follow it."""
+    for _ in range(5):
+        lockout.record_failure(ADMIN_EMAIL)
+    clock(minutes=10)
+    for _ in range(3):
+        lockout.record_failure(ADMIN_EMAIL)
+    assert lockout.failed_attempts(ADMIN_EMAIL) == lockout.MAX_FAILED_ATTEMPTS
+
+    clock(minutes=14, seconds=59)
+    assert lockout.is_locked(ADMIN_EMAIL)
+    clock(minutes=15, seconds=1)
+    assert not lockout.is_locked(ADMIN_EMAIL)
+
+
+def test_each_counted_failure_restarts_the_window(db, clock):
+    """REQ-SEC-004: failures add up as long as each comes within 15 minutes of the previous one."""
+    for _ in range(4):
+        lockout.record_failure(ADMIN_EMAIL)
+    clock(minutes=10)
+    lockout.record_failure(ADMIN_EMAIL)
+    assert lockout.is_locked(ADMIN_EMAIL)
+    clock(minutes=24, seconds=59)  # 15 minutes are counted from the 5th failure, not the 1st
+    assert lockout.is_locked(ADMIN_EMAIL)
+
+
+def test_failures_older_than_15_minutes_are_forgotten(db, clock):
+    """REQ-SEC-004: after 15 minutes without a failure the count starts again at 1."""
+    for _ in range(4):
+        lockout.record_failure(ADMIN_EMAIL)
+    clock(minutes=15, seconds=1)
+    assert lockout.failed_attempts(ADMIN_EMAIL) == 0
+    lockout.record_failure(ADMIN_EMAIL)
+    assert lockout.failed_attempts(ADMIN_EMAIL) == 1
+
+
+def test_failure_is_counted_in_one_update_without_reading_the_count(db):
+    """REQ-SEC-004: the increment happens in the database, so no other login can slip in between (SCRUM-54)."""
+    lockout.record_failure(ADMIN_EMAIL)
+    with CaptureQueriesContext(connection) as queries:
+        lockout.record_failure(ADMIN_EMAIL)
+    statements = [q["sql"].split()[0].upper() for q in queries.captured_queries]
+    assert statements == ["INSERT", "UPDATE"]  # INSERT … ON CONFLICT DO NOTHING; no SELECT of the count
+    assert lockout.failed_attempts(ADMIN_EMAIL) == 2
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(("threads", "expected"), [(4, 4), (8, lockout.MAX_FAILED_ATTEMPTS)])
+def test_simultaneous_failures_are_each_counted(threads, expected):
+    """REQ-SEC-004: failed logins that arrive at the same moment are all counted, up to the limit (SCRUM-54)."""
+    start = threading.Barrier(threads)
+    errors = []
+
+    def fail_once():
+        try:
+            start.wait()
+            lockout.record_failure(ADMIN_EMAIL)
+        except Exception as error:  # reported below; an exception in a thread would otherwise be lost
+            errors.append(error)
+        finally:
+            connection.close()  # each thread has its own database connection
+
+    workers = [threading.Thread(target=fail_once) for _ in range(threads)]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+
+    assert not errors
+    assert lockout.failed_attempts(ADMIN_EMAIL) == expected
 
 
 def test_lock_is_per_account_and_ignores_email_case(client, admin):
