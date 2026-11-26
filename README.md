@@ -4,7 +4,7 @@ Team 05 · Software Engineering and Project Management · IMC Krems · Practical
 
 BizPartnerCheck is a multi-tenant web service that automates the due-diligence checks an Austrian construction company must run before contracting a business partner (VAT number, fake-company list, HFU list, company register, business licenses) and stores every check as evidence.
 
-- **Requirements:** [SRS v2.9](docs/SRS.md) (combined team version); changes follow REQ-CM-001 and are recorded in its Revision History
+- **Requirements:** [SRS v2.10](docs/SRS.md) (combined team version); changes follow REQ-CM-001 and are recorded in its Revision History
 - **Backlog:** Jira project [SCRUM](https://sepmimc.atlassian.net/jira/software/projects/SCRUM/boards/1)
 - **AI agent instructions:** [AGENTS.md](AGENTS.md)
 
@@ -12,7 +12,7 @@ BizPartnerCheck is a multi-tenant web service that automates the due-diligence c
 
 The Django skeleton and CI are in place (**SCRUM-17**). The app is deployed to **Render**, with the database on **Neon** and email through **Brevo** (decided in **SCRUM-42**); see [Deployment](#deployment) for the one-time setup.
 
-Organizations can register (**SCRUM-21**), and `POST /api/v1/checks` checks a VAT number and company name against VIES (**SCRUM-24**, see [API](#api)). Users create, list and revoke API tokens on the **API tokens** page (`/tokens/`) or through `/api/v1/tokens` (**SCRUM-72**), and every API call can authenticate with one as a Bearer token (**SCRUM-71**), limited to 200 calls per minute per token (**SCRUM-73**).
+Organizations can register (**SCRUM-21**). The organization's own VAT number is checked with VIES at registration (**SCRUM-52**, REQ-FUNC-004): a number VIES reports invalid is rejected, and if VIES can't be reached the organization is registered anyway and marked "VAT unverified", which the Super Admin can filter for under `/admin/` → Organizations. And `POST /api/v1/checks` checks a VAT number and company name against VIES (**SCRUM-24**, see [API](#api)). Users create, list and revoke API tokens on the **API tokens** page (`/tokens/`) or through `/api/v1/tokens` (**SCRUM-72**), and every API call can authenticate with one as a Bearer token (**SCRUM-71**), limited to 200 calls per minute per token (**SCRUM-73**).
 
 ## Run it locally
 

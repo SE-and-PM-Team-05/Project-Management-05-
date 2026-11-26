@@ -44,7 +44,13 @@ def register(request):
     form = RegistrationForm(request.POST or None)
 
     if request.method == "POST" and form.is_valid():
-        form.save(request.user)
+        organization = form.save(request.user)
+        if organization and organization.vat_unverified:
+            messages.warning(
+                request,
+                "Your organization is registered, but VIES, the EU's VAT number register, could not be reached to "
+                "verify your VAT number. It is marked “VAT unverified” for now.",
+            )
         return redirect("team_members")
 
     return render(request, "accounts/register.html", {"form": form})
