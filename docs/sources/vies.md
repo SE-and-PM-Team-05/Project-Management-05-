@@ -29,7 +29,8 @@ first (`atu 123 456 78` → `ATU12345678`) and splits after the second character
 
 The registering organization's own VAT number is checked once, with the same call, budget and retry, without
 a requester (`accounts/forms.py`, `verify_own_vat_number`). `valid: false` rejects the registration with a
-form error. Every case the table under "Error cases" turns into `SOURCE_UNAVAILABLE` registers the
+form error. VIES is asked only after every other form field is valid, so a missing field never waits for
+VIES. Every case the table under "Error cases" turns into `SOURCE_UNAVAILABLE` registers the
 organization anyway, with `Organization.vat_verified_at` empty ("VAT unverified"); the Super Admin filters for
 these under `/admin/` → Organizations. The number is not checked again later, so an unverified organization
 may still send a requester VIES rejects.

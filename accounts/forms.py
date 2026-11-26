@@ -54,9 +54,19 @@ class RegistrationForm(forms.Form):
 
     def clean_vat_number(self):
         vat = normalize_vat_number(self.cleaned_data["vat_number"])
-        validate_vat_number(vat)  # VIES is only asked about well-formed numbers
-        self.vat_verified_at = verify_own_vat_number(vat)
+        validate_vat_number(vat)  # format only; VIES is asked in clean()
         return vat
+
+    def clean(self):
+        cleaned = super().clean()
+        # VIES is asked last and only when every field is valid, so a missing field never waits up to 8 s for
+        # VIES and a corrected submit doesn't ask it again for nothing.
+        if not self.errors:
+            try:
+                self.vat_verified_at = verify_own_vat_number(cleaned["vat_number"])
+            except forms.ValidationError as error:
+                self.add_error("vat_number", error)
+        return cleaned
 
     @transaction.atomic
     def save(self, user):

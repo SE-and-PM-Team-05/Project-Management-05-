@@ -173,6 +173,22 @@ def test_vat_number_invalid_in_vies_is_rejected(client, user, vies):
 
 
 @pytest.mark.parametrize(
+    "changes",
+    [{"accept_terms": ""}, {"address": ""}, {"organization_name": ""}],
+    ids=["terms-not-accepted", "no-address", "no-name"],
+)
+def test_vies_not_asked_when_another_field_is_invalid(client, user, vies, changes):
+    """REQ-FUNC-004: VIES is asked only once every other field is valid, so a form error never waits for VIES."""
+    response = register(client, **changes)
+
+    assert response.status_code == 200
+    assert response.context["form"].errors
+    assert "vat_number" not in response.context["form"].errors
+    assert not Organization.objects.exists()
+    vies.assert_not_called()
+
+
+@pytest.mark.parametrize(
     "answers",
     [
         [requests.Timeout(), requests.Timeout()],
@@ -186,7 +202,6 @@ def test_vat_number_invalid_in_vies_is_rejected(client, user, vies):
 )
 def test_vies_unavailable_registers_as_vat_unverified(client, user, vies, answers):
     """REQ-FUNC-004: if VIES gives no usable answer, the organization is registered and marked "VAT unverified"."""
-    vies.return_value = None
     vies.side_effect = answers
     response = register(client)
 
@@ -219,9 +234,9 @@ def test_operator_can_filter_vat_unverified_organizations(client, db):
     client.force_login(User.objects.create_superuser("admin@bizpartnercheck.at", "x"))
 
     url = reverse("admin:accounts_organization_changelist")
-    unverified = client.get(url, {"vat": "unverified"}).content.decode()
+    unverified = client.get(url, {"vat_verified_at__isempty": "1"}).content.decode()
     assert "Unchecked Bau GmbH" in unverified and "Checked Bau GmbH" not in unverified
-    verified = client.get(url, {"vat": "verified"}).content.decode()
+    verified = client.get(url, {"vat_verified_at__isempty": "0"}).content.decode()
     assert "Checked Bau GmbH" in verified and "Unchecked Bau GmbH" not in verified
 
 
